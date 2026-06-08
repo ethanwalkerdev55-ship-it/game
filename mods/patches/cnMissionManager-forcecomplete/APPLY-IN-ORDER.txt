@@ -1,0 +1,66 @@
+Mission Autocomplete — dnSpy apply (ONLY method that works)
+
+RESTORE FIRST if game is frozen:
+  Copy _inspect_bundle\main.bak\Assembly - CSharp.dll → 6877b37c...\main\
+  Copy main.unity3d.bak → main.unity3d
+  Run bundle-inject, restart game, confirm loading works.
+
+IMPORTANT — DO NOT USE "Edit Class" ON cnMissionManager
+  Edit Class recompiles the ENTIRE class. Vanilla decompile has broken coroutine
+  stubs (CallGuideMessage / NanoTimeEffect with names like <CallGuideMessage>d__97)
+  → CS1525 "Invalid expression term '<'" at lines ~1744 even before your edits.
+  Use Assembly Editor for fields + Edit Method / Add Method for code instead.
+
+THEN patch (compile after EACH step):
+
+STEP 0 — Add 4 fields (NOT Edit Class)
+  Right-click cnMissionManager in Assembly Explorer → Edit Type... (Assembly Editor)
+  In the Fields list, Add four private fields:
+    bForceCompleteChain          → System.Boolean
+    m_iForceCompleteChainDepth   → System.Int32
+    m_iForceCompletePendingTaskId → System.Int32
+    m_iForceCompleteRetryCount   → System.Int32
+  OK / Apply (no C# compile step — IL inject only)
+
+  If "Edit Type" is missing: right-click the DLL module → Open in Assembly Editor,
+  navigate to cnMissionManager, add the same four fields there.
+
+STEP 1 — Edit Method → Update
+  Paste all of step1-Update.cs (skip first comment line)
+  Compile
+
+STEP 2 — Edit Method → ProcessStartSucc
+  Paste step2-ProcessStartSucc.cs
+  Compile
+
+STEP 3 — Edit Method → ProcessStartFail
+  Paste step3-ProcessStartFail.cs
+  Compile
+
+STEP 4 — Edit Method → ProcessEndSucc
+  Paste step4-ProcessEndSucc.cs
+  Compile
+
+STEP 5 — Edit Method → ProcessEndFail
+  Paste step5-ProcessEndFail.cs
+  Compile
+
+STEP 6 — Edit Method + Add Method (NOT Edit Class)
+  6a) Edit Method → ForceCompleteCurrentTask
+      Paste ONLY the ForceCompleteCurrentTask method from step6-ForceComplete-block.cs
+      (lines 3–19, the public void method). Compile.
+
+  6b) Add Method (C#) on cnMissionManager — one at a time, compile each:
+      GetForceCompleteTarget
+      PrepareTaskForForceComplete
+      NeedsForceCompleteTaskStart
+      ResolveForceCompleteTerminatorNpcId
+      ClearForceCompleteChain
+      RequestForceCompleteTaskEnd
+      TryForceCompleteChainTask
+      (copy each method body from step6-ForceComplete-block.cs; skip Token comments)
+
+Save Module → bundle-inject → restart → test hotkey → check log for ForceCompleteV2:
+
+DO NOT paste cnMissionManager-ONE-PASTE-EditClass.cs — freezes game at load.
+DO NOT use Edit Class on cnMissionManager — coroutine decompile errors block compile.

@@ -1,0 +1,72 @@
+# =============================================================================
+# FusionFall mission-patch workspace — Git tracks toolchain + docs only.
+# Game client bundles, offline cache, and decompiled game code stay local.
+# =============================================================================
+
+# --- Game client inbox & offline cache (never commit) ---
+6877b37c-e9cd-4826-b82c-5e8d3d5db744/
+ClientFile/**
+!ClientFile/README.txt
+_inspect_bundle/
+mods/decompiled/
+
+# --- Third-party tools (install or copy locally; not part of this repo) ---
+tools/dnSpyEx/
+tools/CheatEngine/
+tools/CheatEngine-extract/
+tools/CheatEngine76.exe
+tools/7z-extra.7z
+tools/7z-installer.exe
+tools/7z2601-x64.exe
+tools/7zip-portable/
+tools/7zr.exe
+tools/UniExtract2/
+tools/downloads/
+tools/install-cheat-engine.bat
+
+# --- Legacy / scratch inspect trees (removed from workspace) ---
+_inspect_dll_diff/
+_inspect_dll_diff2/
+_inspect_dnspy_style/
+FFSpy-7.0/
+dnSpy-net-win64/
+dlls/
+/disunityff/
+commad.txt
+
+# --- Build outputs & patch staging ---
+**/bin/
+**/obj/
+tools/FFPatch/staging/
+
+# --- Binary game / tool artifacts ---
+*.dll
+*.exe
+*.unity3d
+*.resourceFile
+*.pdb
+*.CT
+*.zip
+*.7z
+*.bak
+*.test
+
+# --- Logs ---
+*.log
+fusionfall_log.txt
+_inspect_udp_listener/udp_listener (1).py
+
+# --- IDE (keep shared Cursor rules only) ---
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# --- OS junk ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/

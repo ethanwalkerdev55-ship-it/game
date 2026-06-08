@@ -1,0 +1,70 @@
+Mission Autocomplete — CUSTOMER WORKFLOW (2026-06-07)
+
+Handles timer missions + Fusion Lair / Infected Zone (customer requirements).
+
+Run ONE command:
+
+   D:\work\roberto\tools\FFPatch\apply-mission-patch-v3.bat
+
+Uses ForceCompleteV2 stack from step1–step8 via DonorCompile → customer golden.
+Hotkey: Right Ctrl (NOT F11 — F11 is PCID Render debug only).
+
+Verify log: ForceCompleteV2: start chain task / advance to task / retry task
+
+Protocol + error log (mandatory reading before any patch change):
+  .cursor\rules\fusionfall-mission-patch-protocol.mdc
+  mods\patches\cnMissionManager-forcecomplete\PATCH-ERROR-LOG.md
+
+================================================================================
+LEGACY WORKFLOW (dnSpy + V2–V12 stack) — do not use unless explicitly requested
+================================================================================
+
+1. Open vanilla DLL in dnSpy:
+   D:\work\roberto\_inspect_bundle\main.bak\Assembly - CSharp.dll
+
+2. Add Class Members (C#) on cnMissionManager  [DONE 2026-06-06]
+   Right-click cnMissionManager → "Add Class Members (C#)..."
+   Ctrl+A delete all → paste add-class-members-compile-paste.txt (lines 7-end)
+   Compile ✓
+
+   Log: PROGRESS-LOG.md
+
+3. Edit Method (C#) — paste from step files, compile each:
+   Update              → step1-Update.cs
+   ProcessStartSucc    → step2-ProcessStartSucc.cs
+   ProcessStartFail    → step3-ProcessStartFail.cs
+   ProcessEndSucc      → step4-ProcessEndSucc.cs
+   ProcessEndFail      → step5-ProcessEndFail.cs
+   ForceCompleteCurrentTask → first method only in step6-ForceComplete-block.cs (lines 3-19)
+
+4. File → Save Module AS:
+   D:\work\roberto\tools\FFPatch\golden\Assembly-CSharp.forcecomplete.dll
+
+5. Verify golden:
+   D:\work\roberto\tools\FFPatch\run-verify-golden.bat
+
+================================================================================
+PHASE B — AUTOMATED: every future apply (no dnSpy)
+================================================================================
+
+Run ONE command:
+
+   D:\work\roberto\tools\FFPatch\apply-mission-patch.bat
+
+This will:
+  - restore vanilla Assembly - CSharp.dll from backup
+  - run FFPatch.exe (IL transplant from golden)
+  - run bundle-inject
+  - verify ForceCompleteV2 string in output DLL
+
+================================================================================
+DO NOT USE
+================================================================================
+  - Edit Class on cnMissionManager (coroutine compile errors + load freeze risk)
+  - cnMissionManager-ONE-PASTE-EditClass.cs (freezes game at load)
+
+================================================================================
+If Add Class Members also fails to compile
+================================================================================
+  Paste the exact error. Alternative: send golden DLL to repo after one successful
+  manual session — FFPatch handles all future applies automatically.

@@ -1,0 +1,15 @@
+ Mission Autocomplete is currently working but has limitations on 3 mission types.
+
+1. If the mission involves a “timer” the autocomplete will fail and ask you to return to the NPC who gave you the task
+
+2. If the mission involves a Fusion Lair/Infected Zone it will loop endlessly until you enter the fusion lair or infected zone
+
+
+What’s needed: 
+
+Research into why this is happening and a patch implemented
+
+---------------------------------------
+ The only way around it so far we found was changing local npcs into the warp needed for the location
+The game files hold all the needed information, it can map - task - lair ID but would need a bit of a sophistaced set up to be correct as there’s a lot going on there
+I also figured out how to increase noclip speed on a toggle ill hope you can help me integrate that into your build

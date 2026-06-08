@@ -1,0 +1,23 @@
+FFSpy export tooling
+====================
+
+ILSpy GUI (tools/FFSpy/ILSpy.exe)
+  - Browse and search the DLL
+  - Do NOT use Save Code output for dnSpy whole-class paste
+
+export-assembly-csharp.bat  (DEFAULT)
+  - dnSpy.Console export with --no-yield
+  - Output: mods/decompiled/Assembly-CSharp/
+  - Format matches dnSpy Edit Class (this., Token comments, nested coroutines)
+
+export-assembly-csharp-ilspy.bat
+  - ILSpy/ilspycmd reference export only
+  - Output: mods/decompiled-ilspy/Assembly-CSharp/
+  - Uses Object.op_Implicit, yield return, _003C names — breaks dnSpy recompile
+
+export-class-dnspy.bat ClassName
+  - Export one class for surgical dnSpy edits
+  - Example: export-class-dnspy.bat cnMissionManager
+
+install-dnspy-export.bat
+  - Downloads dnSpyEx portable to tools/dnSpyEx/ if missing

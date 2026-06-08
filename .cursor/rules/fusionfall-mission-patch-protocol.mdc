@@ -1,0 +1,65 @@
+---
+description: Mandatory FusionFall mission autocomplete patch workflow — customer V2 golden, verify-il gate
+globs: tools/FFPatch/**,mods/patches/cnMissionManager-forcecomplete/**,*Assembly - CSharp*
+alwaysApply: false
+---
+
+# FusionFall mission patch protocol
+
+## Customer requirements (must satisfy)
+
+Mission autocomplete via **Right Ctrl** (key 305) must handle:
+
+1. **Timer missions** — zero timer, defer complete in Update, retry on server error 1
+2. **Fusion Lair / Infected Zone** — start task when outside instance, wait for entry, complete with error flag when needed; chain advances without endless loop
+
+## Approved deploy
+
+```
+tools\FFPatch\apply-mission-patch-v3.bat
+```
+
+Runs `build-golden-customer` → restore vanilla → `apply-customer` → `verify-il --customer` → `bundle-inject`.
+
+**Never inject if verify-il fails.**
+
+## Hotkeys (do not confuse)
+
+| Input | Action |
+|-------|--------|
+| **Right Ctrl** | ForceCompleteCurrentTask (mission autocomplete) |
+| **F11** | PCID Render debug overlay only — NOT autocomplete |
+
+## Golden lineage
+
+| Role | Path |
+|------|------|
+| Vanilla | `_inspect_bundle/main.bak/Assembly - CSharp.dll` |
+| Customer golden | `tools/FFPatch/golden/Assembly-CSharp.customer.dll` |
+| Source | `mods/patches/cnMissionManager-forcecomplete/step*.cs` via DonorCompile |
+
+## verify-il --customer checks
+
+- `ForceCompleteV2` log strings + 4 chain fields
+- `TryForceCompleteChainTask` → `RequestForceCompleteTaskEnd` (not direct complete)
+- `IsForceCompleteOutsideInstanceBlocker` present
+- `Update` has pending timer defer
+- `ProcessEndSucc` / `ProcessEndFail` have `bForceCompleteChain` handlers
+
+## Log acceptance (mission 504: 466→468→463)
+
+One **Right Ctrl** should chain with logs like:
+
+```
+ForceCompleteV2: start chain task 466
+ForceCompleteV2: request end 466
+ForceCompleteV2: advance to task 468
+...
+ForceCompleteV2: chain finished
+```
+
+On Fusion Lair task outside zone: `RequestTaskStart` first, then complete after start — no `Fail Outgoing Task` rollback while chain active.
+
+## Error tracking
+
+Append failures to `mods/patches/cnMissionManager-forcecomplete/PATCH-ERROR-LOG.md` before adding new patch layers.

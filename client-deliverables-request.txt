@@ -1,0 +1,169 @@
+================================================================================
+CLIENT FILE REQUEST — copy/paste pack (FusionFall / Retribution mission work)
+================================================================================
+Use ONE message below. Attach nothing from our side until client files are received
+and verified (unless client asks for comparison).
+
+--------------------------------------------------------------------------------
+A) RECOMMENDED MESSAGE (Discord / chat — short)
+--------------------------------------------------------------------------------
+
+Hi — to merge your dnSpy work (NPC warp, noclip toggle, autocomplete) into one
+build without overwriting your changes, I need the actual files from the install
+where those features work.
+
+Please send:
+
+1) main.unity3d — from the launcher cache folder you use when testing
+   (not an old backup unless that is the one with your edits)
+
+2) Assembly - CSharp.dll — exported from the SAME session (dnSpy Save Module)
+   or extracted from that same main.unity3d
+
+3) Assembly - CSharp - first pass.dll — only if you edited it; otherwise skip
+
+For each file, note: file size (bytes) and date modified.
+
+Also please confirm in one line:
+- What works in this build (noclip / NPC warp / F11 or Right Ctrl autocomplete)
+- Test mission (e.g. 504, tasks 466→468→463) and server (e.g. Tester1)
+- What you want in v1: autocomplete only, warp workaround, noclip, or all combined
+
+Once I have these, I will reply with hash + size confirmation so we are on the
+same bundle. I will integrate on top of your main.unity3d, not replace it with
+vanilla.
+
+--------------------------------------------------------------------------------
+B) FORMAL EMAIL VERSION
+--------------------------------------------------------------------------------
+
+Subject: Request — your working main.unity3d + Assembly-CSharp.dll for integration
+
+Hi [Name],
+
+Thank you for the details on the NPC warp workaround, map/task/lair mapping, and
+the noclip speed toggle.
+
+To integrate your changes into a single build (and continue work on timer missions
+and Fusion Lair / Infected Zone tasks), I need the game files from the environment
+where your edits already work.
+
+Please provide:
+
+  • main.unity3d
+  • Assembly - CSharp.dll
+  • Assembly - CSharp - first pass.dll (only if modified)
+
+Requirements:
+  • All files must be from the same build/session.
+  • Prefer the main.unity3d the launcher loads when you test (after Connect).
+  • Include file size and last-modified date for each file.
+
+Please also confirm:
+  1. Features present in this build (noclip toggle, NPC warp, autocomplete hotkey)
+  2. How you test (mission ID, task chain, server name)
+  3. Priority for v1: (A) autocomplete fixes, (B) NPC/warp approach for instance
+     tasks, (C) noclip integration, or (D) all in one bundle
+
+After receipt I will confirm hash and size so daily reports refer to the same
+artifact. Further changes will be applied on top of your bundle.
+
+Best regards,
+[Your name]
+
+--------------------------------------------------------------------------------
+C) WHAT "BOTH" SHOULD MEAN (do not say "both" to client without defining it)
+--------------------------------------------------------------------------------
+
+If you need two bundles for comparison, ask explicitly:
+
+  BUILD A — "Your current working build"
+    main.unity3d + DLLs where noclip / NPC warp / your tests pass
+
+  BUILD B — "Vanilla / load-safe reference" (optional)
+    Only if you want us to diff against clean client; we already have this locally
+
+Do NOT ask for "our build" and "their build" without labels — client will not
+know which main.unity3d you mean.
+
+--------------------------------------------------------------------------------
+D) WHERE CLIENT FINDS main.unity3d (Windows / OpenFusionLauncher)
+--------------------------------------------------------------------------------
+
+Typical paths (client may use custom offline cache):
+
+  Launcher manifest folder:
+    %APPDATA%\OpenFusionLauncher\versions\<version-uuid>.json
+    (check main_file_url field)
+
+  Offline cache (this project):
+    D:\work\roberto\6877b37c-e9cd-4826-b82c-5e8d3d5db744\main.unity3d
+
+  Client should: close game + launcher → copy file → zip → upload
+
+--------------------------------------------------------------------------------
+E) WHAT WE VERIFY ON RECEIPT (internal — you can share summary with client)
+--------------------------------------------------------------------------------
+
+  [ ] File size and SHA256 recorded
+  [ ] Extract DLL from main.unity3d; compare to loose DLL (must match if same build)
+  [ ] Patch markers: ForceCompleteV2 / GetForceCompleteTarget / bForceCompleteChain
+  [ ] Client-specific strings: noclip, warp/NPC edits (client describes what to grep)
+  [ ] Game loads: CreateGameMode:2 in UDP log after Connect
+  [ ] Mission 504 test: one hotkey press; log shows chain + host ProcessEnd*
+
+--------------------------------------------------------------------------------
+F) DAILY REPORT TEMPLATE (after client files received)
+--------------------------------------------------------------------------------
+
+Date:
+Client bundle: main.unity3d size=________ hash=________
+Features confirmed in DLL: ________________
+Test: Mission ___ / tasks ___ / server ___
+Result: pass / fail — log excerpt: ________________
+Next: ________________
+Blockers: ________________
+
+--------------------------------------------------------------------------------
+G) DEADLINE / TIMER LANGUAGE — SAFE TO PROMISE vs NOT
+--------------------------------------------------------------------------------
+
+SAFE (accurate):
+  • "After we receive and verify your main.unity3d, we will integrate within
+    [X business days] and report daily against that file's hash."
+  • "Timer-mission and Fusion Lair fixes will be tested on YOUR bundle; we will
+    not close the task until logs show pass criteria on mission 504 (or agreed
+    test case)."
+  • "We cannot guarantee timer fix until tested on the same build you send."
+
+NOT SAFE (do not promise):
+  • "No issues with timer settings" / "deadline met with no problems" BEFORE
+    client files are received and mission 504 timer case is logged on their DLL.
+  • "Both versions will work" without defining builds and test matrix.
+  • Daily "progress on main.unity3d" while deploying a different hash than client's.
+
+--------------------------------------------------------------------------------
+H) ORIGINAL CUSTOMER REQUIREMENTS (reference)
+--------------------------------------------------------------------------------
+
+From client_requirement.txt:
+  1. Timer missions — autocomplete must not fail with return-to-NPC / error 1
+  2. Fusion Lair / Infected Zone — must not loop until player enters zone
+  3. Patch implemented (research + fix)
+
+Client follow-up:
+  • NPC warp workaround for location / lair
+  • map → task → lair ID in game data; sophisticated setup
+  • noclip speed toggle — integrate into build
+
+--------------------------------------------------------------------------------
+I) OUR CURRENT LOCAL STATE (for your reports — honest)
+--------------------------------------------------------------------------------
+
+ClientFile\main.unity3d (7125105 bytes) — loads game; DLL inside is VANILLA
+  (no ForceCompleteV2). Same as loose ClientFile\Assembly - CSharp.dll.
+
+Deploy of rebuilt patch via bundle-inject currently BLOCKED (bundle shrinks;
+breaks load). Integration path = start from CLIENT's patched main.unity3d.
+
+================================================================================

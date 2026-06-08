@@ -1,0 +1,9 @@
+﻿// STEP 0 — DO NOT use Edit Class (whole-class compile fails on coroutine stubs).
+// Use Assembly Editor → Edit Type on cnMissionManager → add these 4 private fields:
+
+bForceCompleteChain            (type: System.Boolean)
+m_iForceCompleteChainDepth     (type: System.Int32)
+m_iForceCompletePendingTaskId  (type: System.Int32)
+m_iForceCompleteRetryCount     (type: System.Int32)
+
+// Landmark only (do not edit this line): private NpcTableScript NpcTable;

@@ -1,0 +1,24 @@
+DisUnityFF (OpenFusion fork)
+============================
+
+Version base: DisUnity 0.3.4
+Fork: OpenFusionProject/disunityff
+Built from: tools/downloads/OpenFusion-disunityff (2026-06-06)
+
+This is the FusionFall / OpenFusion modding build. It is NOT:
+- stock ata4/disunity 0.3.4 (backup: disunity-stock-ata4-v0.3.4.jar.bak)
+- ata4/disunity 0.5.x (different CLI: bundle-unpack / bundle-pack only)
+
+Extra command vs stock 0.3.4:
+- bundle-create  — pack folders into bundles (optional)
+
+Standard FusionFall workflow:
+  disunity.bat bundle-extract <path>\main.unity3d
+  (edit DLL in dnSpy)
+  disunity.bat bundle-inject <path>\main.unity3d
+
+Verify install:
+  disunity.bat bundle-list <path>\main.unity3d
+
+You should see bundle-create in:
+  disunity.bat -h

@@ -1,0 +1,167 @@
+// dnSpy: right-click cnMissionManager → "Add Class Members (C#)..."
+//
+// IMPORTANT — dnSpy shows a partial-class stub that ends with "}" BEFORE your paste.
+// Your fields/methods MUST be INSIDE the class braces, not after them.
+//
+// FIX if you see CS0116 "namespace cannot contain members":
+//   1. Find the "}" line that comes RIGHT BEFORE "private bool bForceCompleteChain"
+//   2. DELETE that "}" (it closed the class too early)
+//   3. Keep ONE "}" at the very end of the file (after TryForceCompleteChainTask)
+//
+// OR: Ctrl+A, delete all, paste ONLY the lines below (no usings, no partial class header).
+//     dnSpy should wrap them automatically.
+//
+// Paste from here ↓
+
+private bool bForceCompleteChain;
+private int m_iForceCompleteChainDepth;
+private int m_iForceCompletePendingTaskId;
+private int m_iForceCompleteRetryCount;
+
+private cnMissionNode GetForceCompleteTarget()
+{
+    if (this.SelectMissionTask != null && this.SelectMissionTask.GetMe() != null && this.IsExistTaskInActiveMission(this.SelectMissionTask.GetMe().m_iHTaskID))
+    {
+        return this.SelectMissionTask;
+    }
+    cnMissionNode selectedActiveMission = this.GetSelectedActiveMission();
+    if (selectedActiveMission != null && selectedActiveMission.GetMe() != null)
+    {
+        return selectedActiveMission;
+    }
+    for (int i = 0; i < this.m_ActivateMissionList.Count; i++)
+    {
+        cnMissionNode cnMissionNode = (cnMissionNode)this.m_ActivateMissionList[i];
+        if (cnMissionNode != null && cnMissionNode.GetMe() != null)
+        {
+            return cnMissionNode;
+        }
+    }
+    return null;
+}
+
+private void PrepareTaskForForceComplete(cnMissionNode task)
+{
+    if (task == null || task.GetMe() == null)
+    {
+        return;
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        task.m_aiCurrentRemainEnemyNum[i] = 0;
+        task.m_aiCurrentRemainItemNum[i] = 0;
+    }
+    MissionElement me = task.GetMe();
+    if (me.m_iSTGrantTimer > 0 || me.m_iCSUCheckTimer > 0)
+    {
+        task.m_fRemainTime = 0f;
+        task.m_fLifeTime = 0f;
+    }
+}
+
+private bool NeedsForceCompleteTaskStart(MissionElement me, cnMissionNode task)
+{
+    if (me == null || task == null)
+    {
+        return false;
+    }
+    if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
+    {
+        return !this.IsExistTaskInActiveMission(me.m_iHTaskID) || task.GetMissionState() != 1;
+    }
+    if (0 < me.m_iRequireInstanceID)
+    {
+        return !this.IsExistTaskInActiveMission(me.m_iHTaskID);
+    }
+    return false;
+}
+
+private int ResolveForceCompleteTerminatorNpcId(MissionElement me)
+{
+    if (me == null || me.m_iHTerminatorNPCID == 0)
+    {
+        return 0;
+    }
+    if (this.pNpcContainer.SearchTableID(me.m_iHTerminatorNPCID))
+    {
+        return me.m_iHTerminatorNPCID;
+    }
+    if (this.myuser != null)
+    {
+        this.m_NearList.Clear();
+        this.GetNearList(this.myuser);
+        if (this.GetNearbyNPC(me.m_iHTerminatorNPCID) != null)
+        {
+            return me.m_iHTerminatorNPCID;
+        }
+    }
+    return 0;
+}
+
+private void ClearForceCompleteChain()
+{
+    this.bForceCompleteChain = false;
+    this.m_iForceCompleteChainDepth = 0;
+    this.m_iForceCompletePendingTaskId = 0;
+    this.m_iForceCompleteRetryCount = 0;
+}
+
+private void RequestForceCompleteTaskEnd(cnMissionNode task)
+{
+    if (task == null || task.GetMe() == null)
+    {
+        return;
+    }
+    MissionElement me = task.GetMe();
+    int num = this.m_iForceCompleteRetryCount / 3;
+    if (num <= 0)
+    {
+        this.RequestTaskComplete(me.m_iHTaskID, this.ResolveForceCompleteTerminatorNpcId(me), false);
+        return;
+    }
+    if (num == 1)
+    {
+        Logger.Log("ForceCompleteV2: retry without npc task " + me.m_iHTaskID.ToString());
+        this.RequestTaskComplete(me.m_iHTaskID, 0, false);
+        return;
+    }
+    Logger.Log("ForceCompleteV2: retry with error flag task " + me.m_iHTaskID.ToString());
+    this.RequestTaskComplete(me.m_iHTaskID, 0, true);
+}
+
+private void TryForceCompleteChainTask(cnMissionNode task)
+{
+    if (task == null || task.GetMe() == null)
+    {
+        this.ClearForceCompleteChain();
+        return;
+    }
+    if (this.m_iForceCompleteChainDepth >= 16)
+    {
+        this.ClearForceCompleteChain();
+        return;
+    }
+    MissionElement me = task.GetMe();
+    this.PrepareTaskForForceComplete(task);
+    if (this.NeedsForceCompleteTaskStart(me, task))
+    {
+        this.m_iForceCompletePendingTaskId = me.m_iHTaskID;
+        this.m_iForceCompleteRetryCount = 0;
+        this.RequestTaskStart(me.m_iHTaskID, 0);
+        return;
+    }
+    if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
+    {
+        task.SetRemainTime(0f);
+        task.m_fLifeTime = 0f;
+        if (0 < me.m_iSTGrantTimer && this.IsExistTaskInActiveMission(me.m_iHTaskID) && task.GetMissionState() == 1)
+        {
+            this.m_iForceCompletePendingTaskId = me.m_iHTaskID;
+            return;
+        }
+    }
+    this.m_iForceCompleteChainDepth++;
+    this.m_iForceCompleteRetryCount = 0;
+    Logger.Log("ForceCompleteV2: request end " + me.m_iHTaskID.ToString());
+    this.RequestForceCompleteTaskEnd(task);
+}

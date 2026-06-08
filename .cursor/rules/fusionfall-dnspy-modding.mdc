@@ -1,0 +1,40 @@
+---
+description: FusionFall Assembly-CSharp dnSpy patching — mission autocomplete and DLL workflow
+globs: mods/**/*.cs,mods/patches/**,GUIDE-dnSpy-Cursor-DisunityFF.md
+alwaysApply: false
+---
+
+# FusionFall dnSpy modding
+
+## Source of truth
+
+- Edit logic in `mods/decompiled/Assembly-CSharp/` (Cursor).
+- Apply to game only via dnSpy **Compile → Save Module** on `6877b37c-.../main/Assembly - CSharp.dll`, then `bundle-inject`.
+- Cursor edits alone do not change the game.
+
+## Mission autocomplete patch (ForceCompleteV2)
+
+- Logic lives in **`cnMissionManager` only** — do not patch `cnAvatarAttack` for this feature.
+- **DO NOT use `cnMissionManager-ONE-PASTE-EditClass.cs`** — it may compile but **breaks game startup** (loading screen freeze). Full-class recompile replaces coroutine IL incorrectly.
+- **Only safe apply path:** `mods/patches/cnMissionManager-forcecomplete/step0` through `step6` — one dnSpy edit per file, compile after each.
+- Verify after save: search DLL for `ForceCompleteV2`. Log should show `ForceCompleteV2: start chain task`.
+
+## dnSpy paste rules (avoid known failures)
+
+| Mistake | Error / result |
+|--------|----------------|
+| Paste `cnMissionManager-forcecomplete-edit-method-only.cs` whole file into Edit Class | CS0116 namespace cannot contain members |
+| Paste decompiled `d__` coroutine classes | CS1525 invalid `<` |
+| Paste class without `using UnityEngine` | CS0246 MonoBehaviour / Transform not found |
+| Paste entire `cnAvatarAttack.cs` into Edit Class | CS1503 KeyCode, enum, `vector..ctor` errors |
+| Paste entire `cnMissionManager-ONE-PASTE-EditClass.cs` (even if Compile OK) | **Game freezes** on loading screen — restore backup + re-inject |
+
+## Apply (surgical steps only)
+
+1. Open vanilla `Assembly - CSharp.dll` in dnSpy (restore from `_inspect_bundle/main.bak/` if needed).
+2. Run steps 0–6 from `mods/patches/cnMissionManager-forcecomplete/` — **one file per Edit Method/Class**, compile each time.
+3. Save Module → `bundle-inject` → restart game.
+
+Do **not** use ONE-PASTE full-class replace.
+
+## Do not create extra inspect folders or duplicate patch files unless diffing; keep changes in `mods/decompiled` and `mods/patches`.
