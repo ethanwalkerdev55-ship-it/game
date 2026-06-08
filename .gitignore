@@ -43,6 +43,8 @@ tools/FFPatch/staging/
 *.dll
 *.exe
 *.unity3d
+!deliverables/
+!deliverables/main.unity3d
 *.resourceFile
 *.pdb
 *.CT

@@ -4,12 +4,19 @@ Patch toolchain and documentation for mission autocomplete work (mission 504 / t
 
 ## Tracked in Git
 
+- **`deliverables/main.unity3d`** — patched bundle for the customer (see `deliverables/BUNDLE.txt` for size/hash)
 - `tools/FFPatch/` — patch build, deploy, and verify scripts (source only)
 - `tools/DisunityFF/`, `tools/FFSpy/` — wrapper scripts (binaries installed locally)
 - `mods/patches/` — patch sources and error-tracking docs
 - `mods/*.md` — queue and process documentation
 - Root requirement / guide text files
 - `_inspect_udp_listener/` — UDP log listener scripts
+
+After deploying a new patched bundle to the game cache, refresh the deliverable:
+
+```bat
+copy /Y 6877b37c-e9cd-4826-b82c-5e8d3d5db744\main.unity3d deliverables\main.unity3d
+```
 
 ## Local only (not in Git)
 
