@@ -21,10 +21,10 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 "%FFPATCH%" verify-no-donor-refs "%STAGED%"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-"%FFPATCH%" verify-safe-plus "%STAGED%"
+"%FFPATCH%" verify-bootstrap "%STAGED%"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-"%FFPATCH%" verify-direct-send "%STAGED%"
+"%FFPATCH%" verify-safe-plus "%STAGED%"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 exit /b 0

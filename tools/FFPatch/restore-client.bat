@@ -27,19 +27,9 @@ if exist "%MAIN%" (
     rmdir /S /Q "%MAIN%"
 )
 
-echo [3/3] Unpin and update launcher manifest...
+echo [3/3] Sync vanilla bundle to offline + ffcache + manifest...
 call "%~dp0fix-launcher-manifest.bat" --unpin
-
-powershell -NoProfile -Command ^
-  "$bundle='%BUNDLE%'; $manifest='%MANIFEST%';" ^
-  "$h=(Get-FileHash $bundle -Algorithm SHA256).Hash.ToLower(); $s=(Get-Item $bundle).Length;" ^
-  "$j=Get-Content $manifest -Raw | ConvertFrom-Json;" ^
-  "$j.main_file_info.hash=$h; $j.main_file_info.size=$s;" ^
-  "$j.main_file_url='file:///D:/work/roberto/%UUID%/main.unity3d';" ^
-  "$j | ConvertTo-Json -Depth 100 | Set-Content $manifest -Encoding UTF8;" ^
-  "Write-Host \"main.unity3d size=$s\"; Write-Host \"hash=$h\""
-
-call "%~dp0fix-launcher-manifest.bat"
+call "%~dp0sync-patch-cache.bat"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo Done. Client bundle restored (no mission patch). Connect from launcher now.

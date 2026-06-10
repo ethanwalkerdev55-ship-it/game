@@ -61,7 +61,7 @@ public class cnMissionNode
     public static void UpdateRemainTime() { }
 }
 
-public class Status : Component { public int iID; }
+public class Status : Component { public int iID; public bool bInsMap; }
 public class NpcMoveController : Component { public NpcTable pTable = new NpcTable(); }
 public class NpcTable { public int m_iSightRange; public int m_iBarkerType; }
 
@@ -185,6 +185,7 @@ public partial class cnMissionManagerV2Donor : MonoBehaviour
     private void RefreshQuestSymbol() { }
     private cnMissionNode GetTask(int id) { return null; }
     private void RequestTaskStart(int taskId, int npcId) { }
+    private void RequestTaskComplete(int taskId, int npcId, bool bError) { }
     private int SearchMissionTaskChecker(int id) { return -1; }
     private void AddMissionTaskChecker(int id) { }
     private void DelMissionTaskChecker(int id) { }

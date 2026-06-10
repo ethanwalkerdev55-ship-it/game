@@ -3,14 +3,15 @@
 Living log. Update on every staging run, deploy attempt, or client log analysis.
 
 **Process:** Order of work and focus rules → [`../../CONTINUOUS-ERROR-TRACKING.md`](../../CONTINUOUS-ERROR-TRACKING.md)  
-**Active queue:** [`../../ACTIVE-ERROR-QUEUE.md`](../../ACTIVE-ERROR-QUEUE.md)
+**Active queue:** [`../../ACTIVE-ERROR-QUEUE.md`](../../ACTIVE-ERROR-QUEUE.md)  
+**Mission catalog:** [`../../docs/missions/MISSION-CATALOG.md`](../../docs/missions/MISSION-CATALOG.md) — on any mission failure, open [`catalog/MISSION-{id}.md`](../../docs/missions/catalog/) for the log’s `mission id` before hypothesizing (CONTINUOUS-ERROR-TRACKING §2.5).
 
 **Client requirements (unchanged):**
 1. Timer missions — autocomplete must not fail with “return to NPC” / error 1
 2. Fusion Lair / Infected Zone — must not loop until player enters zone
 3. Game must load (no black screen)
 
-**Test mission:** 504 → tasks **466 → 468 → 463**
+**Test mission:** 504 → tasks **466 → 468 → 463** — [`catalog/MISSION-504.md`](../../docs/missions/catalog/MISSION-504.md)
 
 ---
 
@@ -24,7 +25,7 @@ Living log. Update on every staging run, deploy attempt, or client log analysis.
 | Timer retry | **PENDING VERIFY** | SAFE+ `ForceCompleteOnEndFail` on err 1 |
 | 466↔463 loop | **FIX PENDING** | Stale `m_iForceCompletePendingTaskId` (468) blocked `ForceCompleteOnStartSucc(463)` |
 
-**Current live bundle:** tier **SAFE++++++** (`hash=f4f5f4c0…`, size=7,100,580, build `2026-06-07-fct-rtc2`).
+**Current live bundle:** **chain504 bundle-inject** (`hash=1f5c728b…`, size=7,105,691, build `2026-06-08-chain504`). Redeployed 2026-06-08 ~22:35 after vanilla bootstrap pass. Verified inside bundle via `verify-bundle-patch.bat`.
 
 **Launcher manifest:** must be `file:///D:/work/roberto/6877b37c-e9cd-4826-b82c-5e8d3d5db744/main.unity3d` — **NOT** CDN. Run `verify-deploy-manifest.bat` before every test.
 
@@ -43,6 +44,10 @@ ProcessStartFail tasknumber : 463
 ```
 
 **Diagnosis:** Vanilla autocomplete sends complete without `bError:true` for instance task 463. Server rejects (error 1). Vanilla fail-outgoing restarts 466 → loop.
+
+**2026-06-08 23:39–23:40 (vanilla, Connect OK):** Same loop twice in ~30s — `468` fail start → `463` start succ → `463` end fail err 1 → `466`. No patch loaded. Confirms **server packet validation**, not client load bug. Fix path: [`MISSION-PACKET-COMPLETION.md`](../../docs/MISSION-PACKET-COMPLETION.md) — per-task `TASK_END` matrix from catalog; close ERR-001 on `ProcessEndSucc : 463`, not on hotkey alone.
+
+**2026-06-09 doc504 staging (ERR-001 attempt #10):** Implemented `EmitDocCompletePacket`, `PrepareTaskForDocComplete`, `ResolveDocCompleteSendError`; build stamp `2026-06-08-doc504`. `run-verify-staging.bat` **PASS**. Client deploy **blocked** by ERR-002 per STRICT-RULES §2.4.
 
 **Fix deployed:** Tier 2 — LITE helpers + surgical `ProcessEndFail` hook.
 
@@ -281,6 +286,41 @@ ForceCompleteV2: hotkey RequestTaskComplete task 468
 
 ---
 
+## Log evidence — 2026-06-08 22:30 (vanilla bootstrap PASS)
+
+Mission doc: [`MISSION-504.md`](../../docs/missions/catalog/MISSION-504.md) — chain 466→468→463, task 463 instance **12**, fail→466.
+
+```
+bootstrap snapshot: offline/ffcache hash=3a91b191… size=7125105
+Requesting to assetInfo.php
+Resources base url is: 'file:///D:/work/roberto/6877b37c-e9cd-4826-b82c-5e8d3d5db744/'   ← 59ms
+CreateGameMode:2
+func ReceiveConnect to / login SUCC
+```
+
+**Diagnosis:** Bootstrap blocker cleared on vanilla bundle. No `ForceCompleteV2` in session — patch not loaded.
+
+---
+
+## Log evidence — 2026-06-08 22:32 (ERR-001 repro, vanilla, no patch)
+
+```
+ProcessStartFail tasknum : 468
+Send Start Mission : 463
+ProcessStartSucc : 463
+TaskNode.GetMe().m_iSTGrantWayPoint = false          ← instance task, not at waypoint
+ProcessEndFail : 463 Error Code : 1
+Fail Outgoing Task : 466                             ← MISSION-504 fail-restart=466
+ProcessStartSucc : 466
+ProcessStartFail tasknumber : 463
+```
+
+**Diagnosis:** Matches MISSION-504 task 463 — `m_iRequireInstanceID=12`, complete outside instance → server error 1 → vanilla fail-outgoing to 466. **ERR-001 still open**; requires chain504 patch in loaded bundle.
+
+**Deploy follow-up:** `apply-mission-patch-client-deploy.bat` at ~22:35 → `hash=1f5c728b…`, manifest pinned, ffcache synced.
+
+---
+
 ## Next engineering actions
 
 1. [x] Fix DonorCompile assembly ref (`verify-no-donor-refs`)
@@ -296,8 +336,13 @@ ForceCompleteV2: hotkey RequestTaskComplete task 468
 11. [x] SAFE+++++ deploy — skip IL bypass on step8 RTC (`hash=b064cbfd…`)
 12. [x] Diagnose fct-rtc silent RTC — inline bool arg broke IL stack
 13. [x] fct-rtc2 deploy + host response logging (`hash=f4f5f4c0…`)
-14. [ ] Log shows `RequestTaskComplete enter` + `sent complete packet` + `host ProcessEndSucc` or `host ProcessEndFail`
-15. [ ] Log shows `advance to task 463` + `instance zone complete task 463`
-16. [ ] Log shows `instance start fail complete task 463` (fallback path)
-17. [ ] Log shows `retry task 463 err 1 attempt 2+` on error 1
-18. [ ] No `ProcessStartSucc : 466` during active chain after 463 handled
+14. [x] chain504 deploy (`hash=1f5c728b…`) — `iInsMapNum` hack, defer-start 463, goto terminator NPC in chain emit; deploy gate 98%
+15. [x] LOOSE deploy diagnosis (2026-06-08 21:52) — bootstrap OK but **no ForceCompleteV2**; game loads DLL from bundle only
+16. [x] bundle-inject redeploy + `verify-bundle-patch.bat` + manifest CDN→local fix (`ba99b964…` CDN was active before deploy)
+16b. [x] Vanilla bootstrap pass 22:30:33; ERR-001 repro 22:32:03 on vanilla (no patch)
+16c. [x] chain504 redeploy 22:35 (`hash=1f5c728b…`) — sync-patch-cache + manifest pin
+17. [ ] Log shows `Resources base url` + `patch build 2026-06-08-chain504` + `emit enter` + `host ProcessEndSucc` or `host ProcessEndFail`
+18. [ ] Log shows `advance to task 463` + `instance zone complete task 463`
+19. [ ] Log shows `instance start fail complete task 463` (fallback path)
+20. [ ] Log shows `retry task 463 err 1 attempt 2+` on error 1
+21. [ ] No `ProcessStartSucc : 466` during active chain after 463 handled

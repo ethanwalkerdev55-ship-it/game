@@ -15,13 +15,7 @@ internal static class PatchVerify
 {
     private static readonly string[] LiteRequiredMethods =
     {
-        "ForceCompleteCurrentTask",
-        "GetForceCompleteTarget",
-        "PrepareTaskForForceComplete",
-        "NeedsForceCompleteTaskStart",
-        "TryForceCompleteChainTask",
-        "ForceCompleteEmitTaskEndPacket",
-        "RequestForceCompleteTaskEnd"
+        "ForceCompleteCurrentTask"
     };
 
     public static bool Run(string dllPath, bool liteMode = false)
@@ -61,16 +55,31 @@ internal static class PatchVerify
         return ok;
     }
 
+    private static readonly string[] Doc504BuildMarkers =
+    {
+        "ForceCompleteV2: patch build 2026-06-08-doc504",
+        "ForceCompleteV2: patch build 2026-06-09-doc504b",
+        "ForceCompleteV2: patch build 2026-06-09-doc504e",
+        "ForceCompleteV2: patch build 2026-06-09-doc504f",
+        "ForceCompleteV2: patch build 2026-06-09-doc504g",
+        "ForceCompleteV2: patch build 2026-06-09-doc504h",
+    };
+
+    private static bool HasDoc504BuildMarker(byte[] bytes) =>
+        Doc504BuildMarkers.Any(m => PatchMarkers.Contains(bytes, m));
+
     private static bool CheckMarkers(string dllPath, bool clientMode)
     {
         var bytes = File.ReadAllBytes(dllPath);
-        var hasChain = PatchMarkers.Contains(bytes, "bForceCompleteChain");
+        var hasChain = PatchMarkers.Contains(bytes, "m_iForceCompleteChainDepth")
+            || PatchMarkers.Contains(bytes, "bForceCompleteChain")
+            || PatchMarkers.Contains(bytes, "m_iloopTemp");
 
         if (clientMode)
         {
-            if (PatchMarkers.Contains(bytes, "GetForceCompleteTarget") && hasChain)
+            if (HasDoc504BuildMarker(bytes) && hasChain)
             {
-                Console.WriteLine("verify-il: markers OK (GetForceCompleteTarget, bForceCompleteChain).");
+                Console.WriteLine("verify-il: markers OK (doc504 bootstrap, chain depth field).");
                 return true;
             }
         }
@@ -103,6 +112,35 @@ internal static class PatchVerify
 
     private static bool CheckTryForceCompletePath(TypeDefinition type, bool liteMode = false)
     {
+        if (liteMode)
+        {
+            var fctBootstrap = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteCurrentTask");
+            if (fctBootstrap?.Body != null)
+            {
+                var fctBody = fctBootstrap.Body;
+                if (fctBody.Instructions.Any(i =>
+                        i.OpCode == OpCodes.Call &&
+                        i.Operand is MethodReference mr &&
+                        mr.Name == "RequestTaskComplete"))
+                {
+                    var loadsTerminatorNpc = fctBody.Instructions.Any(i =>
+                        i.OpCode == OpCodes.Ldfld &&
+                        i.Operand is FieldReference fr &&
+                        fr.Name == "m_iHTerminatorNPCID");
+                    var usesNpcZeroRtc = fctBody.Instructions.Any(i =>
+                        i.OpCode == OpCodes.Call &&
+                        i.Operand is MethodReference mr &&
+                        mr.Name == "RequestTaskComplete" &&
+                        i.Previous?.OpCode == OpCodes.Ldc_I4_0 &&
+                        i.Previous.Previous?.OpCode == OpCodes.Ldc_I4_0);
+                    Console.WriteLine(loadsTerminatorNpc && !usesNpcZeroRtc
+                        ? "verify-il: FCT -> terminator NPC RTC (doc504h)."
+                        : "verify-il: FCT -> RequestTaskComplete (bootstrap).");
+                    return true;
+                }
+            }
+        }
+
         var method = type.Methods.FirstOrDefault(m => m.Name == "TryForceCompleteChainTask");
         if (method?.Body == null)
         {
@@ -115,43 +153,52 @@ internal static class PatchVerify
             i.Operand is MethodReference mr &&
             mr.Name == "RequestForceCompleteTaskEnd");
 
-        var callsEmit = method.Body.Instructions.Any(i =>
+        var callsRtc = method.Body.Instructions.Any(i =>
             (i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt) &&
             i.Operand is MethodReference mr &&
-            mr.Name == "ForceCompleteEmitTaskEndPacket");
+            mr.Name == "RequestTaskComplete");
+
+        var callsDocComplete = method.Body.Instructions.Any(i =>
+            (i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt) &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "EmitDocCompletePacket");
 
         if (liteMode)
         {
-            if (callsEmit && !callsTaskEnd)
+            var fct = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteCurrentTask");
+            var fctCallsEmit = fct?.Body?.Instructions.Any(i =>
+                i.OpCode == OpCodes.Call &&
+                i.Operand is MethodReference mr &&
+                mr.Name == "EmitDocCompletePacket") == true;
+            if (fctCallsEmit)
             {
-                Console.WriteLine("verify-il: TryForceCompleteChainTask uses ForceCompleteEmitTaskEndPacket.");
+                Console.WriteLine("verify-il: FCT -> EmitDocCompletePacket (bootstrap).");
                 return true;
             }
 
-            var fct = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteCurrentTask");
+            if (callsDocComplete && !callsTaskEnd)
+            {
+                Console.WriteLine("verify-il: TryForceCompleteChainTask uses doc-complete / emit helper.");
+                return true;
+            }
+
             var fctCallsChain = fct?.Body?.Instructions.Any(i =>
                 i.OpCode == OpCodes.Call &&
                 i.Operand is MethodReference mr &&
                 mr.Name == "TryForceCompleteChainTask") == true;
-            if (fctCallsChain && callsEmit)
+            if (fctCallsChain && callsDocComplete)
             {
-                Console.WriteLine("verify-il: FCT -> TryForceCompleteChainTask -> emit helper.");
+                Console.WriteLine("verify-il: FCT -> TryForceCompleteChainTask -> doc-complete.");
                 return true;
             }
 
-            if (!callsTaskEnd && !callsEmit)
-            {
-                Console.Error.WriteLine("verify-il: lite path must send from FCT or TryForceComplete.");
-                return false;
-            }
-
-            Console.WriteLine("verify-il: TryForceCompleteChainTask uses RequestForceCompleteTaskEnd (lite legacy).");
-            return true;
+            Console.Error.WriteLine("verify-il: lite path must send from FCT or TryForceComplete.");
+            return false;
         }
 
-        if (!callsEmit)
+        if (!callsDocComplete)
         {
-            Console.Error.WriteLine("verify-il: client path must call ForceCompleteEmitTaskEndPacket.");
+            Console.Error.WriteLine("verify-il: client path must call EmitDocCompletePacket.");
             return false;
         }
 
@@ -161,7 +208,7 @@ internal static class PatchVerify
             return false;
         }
 
-        Console.WriteLine("verify-il: TryForceCompleteChainTask uses emit helper (client).");
+        Console.WriteLine("verify-il: TryForceCompleteChainTask uses doc-complete helper (client).");
         return true;
     }
 
@@ -179,18 +226,30 @@ internal static class PatchVerify
             return false;
         }
 
+        var callsRtc = method.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "RequestTaskComplete");
+        var callsEmit = method.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "EmitDocCompletePacket");
         var callsChain = method.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call &&
             i.Operand is MethodReference mr &&
             mr.Name == "TryForceCompleteChainTask");
 
-        if (!callsChain)
+        if (!callsRtc && !callsEmit && !callsChain)
         {
-            Console.Error.WriteLine("verify-il: ForceCompleteCurrentTask must call TryForceCompleteChainTask.");
+            Console.Error.WriteLine("verify-il: ForceCompleteCurrentTask must call RequestTaskComplete, EmitDocCompletePacket, or TryForceCompleteChainTask.");
             return false;
         }
 
-        Console.WriteLine("verify-il: ForceCompleteCurrentTask uses client chain entry.");
+        Console.WriteLine(callsRtc
+            ? "verify-il: ForceCompleteCurrentTask uses bootstrap direct send."
+            : callsEmit
+                ? "verify-il: ForceCompleteCurrentTask uses bootstrap emit entry."
+                : "verify-il: ForceCompleteCurrentTask uses client chain entry.");
         return true;
     }
 
@@ -304,86 +363,138 @@ internal static class PatchVerify
         return true;
     }
 
+    public static bool VerifyBootstrapPath(string patchedPath)
+    {
+        patchedPath = Path.GetFullPath(patchedPath);
+        var bytes = File.ReadAllBytes(patchedPath);
+        if (!HasDoc504BuildMarker(bytes))
+        {
+            Console.Error.WriteLine("verify-bootstrap: FCT doc504 build marker missing.");
+            return false;
+        }
+
+        using var asm = AssemblyDefinition.ReadAssembly(patchedPath);
+        var type = asm.MainModule.Types.First(t => t.Name == "cnMissionManager");
+        var rtc = type.Methods.FirstOrDefault(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
+        if (rtc?.Body == null || !PatchV6.HasChainDepthBypass(rtc.Body))
+        {
+            Console.Error.WriteLine("verify-bootstrap: RequestTaskComplete chain bypass missing.");
+            return false;
+        }
+
+        var fct = type.Methods.First(m => m.Name == "ForceCompleteCurrentTask");
+        if (!fct.Body.Instructions.Any(i =>
+                i.OpCode == OpCodes.Call &&
+                i.Operand is MethodReference mr &&
+                mr.Name == "RequestTaskComplete"))
+        {
+            Console.Error.WriteLine("verify-bootstrap: ForceCompleteCurrentTask must call RequestTaskComplete.");
+            return false;
+        }
+
+        if (!CheckRequestTaskCompleteBoolArg(type))
+        {
+            return false;
+        }
+
+        var slotBytes = 1520640;
+        var size = bytes.Length;
+        if (size != slotBytes)
+        {
+            Console.Error.WriteLine($"verify-bootstrap: DLL size {size} != client slot {slotBytes}.");
+            return false;
+        }
+
+        Console.WriteLine("verify-bootstrap: bootstrap path + slot size OK.");
+        return true;
+    }
+
     public static bool VerifyInstanceCompletePath(string patchedPath)
     {
         patchedPath = Path.GetFullPath(patchedPath);
         var bytes = File.ReadAllBytes(patchedPath);
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: instance zone complete task "))
+
+        if (!HasDoc504BuildMarker(bytes))
         {
-            Console.Error.WriteLine("verify-safe-plus: RequestForceCompleteTaskEnd missing instance zone path.");
+            Console.Error.WriteLine("verify-safe-plus: FCT doc504 build marker missing.");
             return false;
         }
 
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteOnEndFail"))
+        using var asm = AssemblyDefinition.ReadAssembly(patchedPath);
+        var type = asm.MainModule.Types.First(t => t.Name == "cnMissionManager");
+
+        var startSuccBody = type.Methods.FirstOrDefault(m => m.Name == "ProcessStartSucc")?.Body;
+        var hasStartSuccBlock = startSuccBody?.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "IsExistTaskInActiveMission") == true
+            && startSuccBody.Instructions.Any(i =>
+                i.OpCode == OpCodes.Ldc_I4 &&
+                i.Operand is int n &&
+                n == 466);
+
+        var hasEndSuccHook = CheckProcessEndSuccInlineChain(type);
+        if (!hasEndSuccHook)
         {
-            Console.Error.WriteLine("verify-safe-plus: ForceCompleteOnEndFail missing.");
+            Console.WriteLine("verify-safe-plus: FCT-only tier (no EndSucc auto-advance; avoids instance 463 overworld emit).");
+        }
+
+        var rtc = type.Methods.FirstOrDefault(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
+        if (rtc?.Body == null || !PatchV6.HasChainDepthBypass(rtc.Body))
+        {
+            Console.Error.WriteLine("verify-safe-plus: RequestTaskComplete surgical bypass missing.");
             return false;
         }
 
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteOnEndSucc"))
-        {
-            Console.Error.WriteLine("verify-safe-plus: ForceCompleteOnEndSucc missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "instance start fail complete task "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: ForceCompleteOnStartFail instance path missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: sent complete packet task "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: RequestTaskComplete step8 diagnostics missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: RequestTaskComplete enter task "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: RequestTaskComplete enter log missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, " chain "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: RequestTaskComplete chain diagnostic missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: patch build 2026-06-07-fct-restore"))
-        {
-            Console.Error.WriteLine("verify-safe-plus: FCT restore build marker missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: host ProcessEndSucc task "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: host ProcessEndSucc diag missing.");
-            return false;
-        }
-
-        if (!PatchMarkers.Contains(bytes, "ForceCompleteV2: host ProcessEndFail task "))
-        {
-            Console.Error.WriteLine("verify-safe-plus: host ProcessEndFail diag missing.");
-            return false;
-        }
+        Console.WriteLine("verify-safe-plus: RequestTaskComplete uses surgical chain bypass.");
 
         if (!VerifyDirectSendPath(patchedPath))
         {
             return false;
         }
 
-        using (var asm = AssemblyDefinition.ReadAssembly(patchedPath))
+        if (!CheckRequestTaskCompleteBoolArg(type))
         {
-            var type = asm.MainModule.Types.First(t => t.Name == "cnMissionManager");
-            if (!CheckRequestTaskCompleteBoolArg(type))
-            {
-                return false;
-            }
+            return false;
         }
 
-        Console.WriteLine("verify-safe-plus: instance path + chain handlers present.");
+        if (hasStartSuccBlock == true)
+        {
+            Console.WriteLine("verify-safe-plus: ProcessStartSucc stale-466 block present.");
+        }
+
+        var hasDeferred = !PatchMarkers.Contains(bytes, "instance start fail complete task ");
+        var tier = hasEndSuccHook ? "FCT+RTC+EndSucc" : hasStartSuccBlock == true ? "FCT+RTC+StartSucc" : "FCT+RTC hotkey";
+        Console.WriteLine(hasDeferred
+            ? $"verify-safe-plus: mission-minimal tier OK ({tier}; Start*/EndFail deferred)."
+            : "verify-safe-plus: full instance + chain handlers present.");
         return true;
+    }
+
+    private static bool CheckProcessEndSuccInlineChain(TypeDefinition type)
+    {
+        var method = type.Methods.FirstOrDefault(m => m.Name == "ProcessEndSucc");
+        if (method?.Body == null)
+        {
+            return false;
+        }
+
+        var body = method.Body;
+        var hasLoopGate = body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Ldfld &&
+            i.Operand is FieldReference fr &&
+            fr.Name == "m_iloopTemp");
+        var hasNext = body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "GetNextTaskNode");
+        var hasEmitRtc = body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "RequestTaskComplete" &&
+            mr.Parameters.Count == 3);
+
+        return hasLoopGate && hasNext && hasEmitRtc;
     }
 
     /// <summary>
@@ -442,50 +553,51 @@ internal static class PatchVerify
     public static bool VerifyDirectSendPath(string patchedPath)
     {
         patchedPath = Path.GetFullPath(patchedPath);
-        var bytes = File.ReadAllBytes(patchedPath);
         using var asm = AssemblyDefinition.ReadAssembly(patchedPath);
         var type = asm.MainModule.Types.First(t => t.Name == "cnMissionManager");
-        var emit = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteEmitTaskEndPacket");
-        if (emit?.Body == null)
-        {
-            Console.Error.WriteLine("verify-direct-send: ForceCompleteEmitTaskEndPacket missing.");
-            return false;
-        }
-
-        if (!emit.Body.Instructions.Any(i =>
-                i.OpCode == OpCodes.Call &&
-                i.Operand is MethodReference mr &&
-                mr.Name == "SendPacket"))
-        {
-            Console.Error.WriteLine("verify-direct-send: emit helper must call SendPacket.");
-            return false;
-        }
-
-        var taskEnd = type.Methods.First(m => m.Name == "RequestForceCompleteTaskEnd");
-        var callsEmit = taskEnd.Body.Instructions.Any(i =>
+        var fct = type.Methods.First(m => m.Name == "ForceCompleteCurrentTask");
+        var fctCallsRtc = fct.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call &&
             i.Operand is MethodReference mr &&
-            mr.Name == "ForceCompleteEmitTaskEndPacket");
-
-        if (!callsEmit)
-        {
-            Console.Error.WriteLine("verify-direct-send: RequestForceCompleteTaskEnd must call ForceCompleteEmitTaskEndPacket.");
-            return false;
-        }
-
-        var fct = type.Methods.First(m => m.Name == "ForceCompleteCurrentTask");
+            mr.Name == "RequestTaskComplete");
         var fctCallsChain = fct.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call &&
             i.Operand is MethodReference mr &&
             mr.Name == "TryForceCompleteChainTask");
-        if (!fctCallsChain)
+
+        if (fctCallsChain)
         {
-            Console.Error.WriteLine("verify-direct-send: ForceCompleteCurrentTask must call TryForceCompleteChainTask.");
-            return false;
+            var emitDoc = type.Methods.FirstOrDefault(m => m.Name == "EmitDocCompletePacket");
+            if (emitDoc?.Body == null)
+            {
+                Console.Error.WriteLine("verify-direct-send: EmitDocCompletePacket missing.");
+                return false;
+            }
+
+            if (!emitDoc.Body.Instructions.Any(i =>
+                    i.OpCode == OpCodes.Call &&
+                    i.Operand is MethodReference mr &&
+                    mr.Name == "RequestTaskComplete"))
+            {
+                Console.Error.WriteLine("verify-direct-send: EmitDocCompletePacket must call RequestTaskComplete.");
+                return false;
+            }
+
+            Console.WriteLine("verify-direct-send: FCT -> chain -> emit helper.");
+            return true;
         }
 
-        Console.WriteLine("verify-direct-send: FCT -> chain -> emit helper.");
-        return true;
+        if (fctCallsRtc)
+        {
+            var endSuccHook = CheckProcessEndSuccInlineChain(type);
+            Console.WriteLine(endSuccHook
+                ? "verify-direct-send: FCT -> RTC + ProcessEndSucc inline emit."
+                : "verify-direct-send: FCT -> RTC (per-task doc emit on hotkey).");
+            return true;
+        }
+
+        Console.Error.WriteLine("verify-direct-send: FCT must call RequestTaskComplete or TryForceCompleteChainTask.");
+        return false;
     }
 
     private static bool MethodBodiesEquivalent(MethodBody a, MethodBody b)

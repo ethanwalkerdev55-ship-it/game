@@ -5,19 +5,11 @@ using Mono.Cecil.Cil;
 
 namespace FFPatch;
 
-/// <summary>
-/// Surgical ProcessStartFail: instance start fail → complete with bError:true during chain.
-/// </summary>
 internal static class PatchProcessStartFailChain
 {
-    internal static void Apply(TypeDefinition type)
+    internal static void Apply(TypeDefinition type, TypeDefinition donorType)
     {
-        var handler = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteOnStartFail");
-        if (handler == null)
-        {
-            throw new InvalidOperationException("ForceCompleteOnStartFail missing — build donor first.");
-        }
-
+        var donorEmit = donorType.Methods.First(m => m.Name == "EmitDocCompletePacket");
         var method = type.Methods.First(m => m.Name == "ProcessStartFail");
         var body = method.Body;
         if (HasChainHook(body))
@@ -26,15 +18,10 @@ internal static class PatchProcessStartFailChain
             return;
         }
 
-        var delChecker = body.Instructions.FirstOrDefault(i =>
+        var delChecker = body.Instructions.First(i =>
             i.OpCode == OpCodes.Call &&
             i.Operand is MethodReference mr &&
             mr.Name == "DelMissionTaskChecker");
-        if (delChecker == null)
-        {
-            throw new InvalidOperationException("ProcessStartFail: DelMissionTaskChecker call not found.");
-        }
-
         FieldReference? taskNumField = null;
         Instruction? packetLoad = null;
         for (var ins = delChecker.Previous; ins != null; ins = ins.Previous)
@@ -51,33 +38,63 @@ internal static class PatchProcessStartFailChain
 
         if (taskNumField == null || packetLoad == null)
         {
-            throw new InvalidOperationException("ProcessStartFail: iTaskNum load before DelMissionTaskChecker not found.");
+            throw new System.InvalidOperationException("ProcessStartFail: iTaskNum load not found.");
         }
 
-        var insertAt = delChecker.Next ?? delChecker;
+        var taskVar = new VariableDefinition(type.Module.ImportReference(
+            type.Module.Types.First(t => t.Name == "cnMissionNode")));
+        body.Variables.Add(taskVar);
+        var getTask = type.Methods.First(m => m.Name == "GetTask" && m.Parameters.Count == 1);
+        var loopTemp = type.Fields.First(f => f.Name == "m_iloopTemp");
+        var logMethod = IlLookup.FindLog(body);
+        var toString = type.Module.ImportReference(typeof(int).GetMethod("ToString", System.Type.EmptyTypes)!);
         var il = body.GetILProcessor();
+        var insertAt = delChecker.Next ?? delChecker;
+        var emitSite = il.Create(OpCodes.Nop);
 
         var loadPacket = CloneInstruction(il, packetLoad);
         var loadTaskNum = il.Create(OpCodes.Ldfld, taskNumField);
 
-        il.InsertBefore(insertAt, il.Create(OpCodes.Ldarg_0));
-        il.InsertBefore(insertAt, loadPacket);
-        il.InsertBefore(insertAt, loadTaskNum);
-        il.InsertBefore(insertAt, il.Create(OpCodes.Call, handler));
+        var gate = new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldfld, loopTemp),
+            il.Create(OpCodes.Ldc_I4_0),
+            il.Create(OpCodes.Ble_S, insertAt),
+            loadPacket,
+            loadTaskNum,
+            il.Create(OpCodes.Call, getTask),
+            il.Create(OpCodes.Stloc, taskVar),
+            il.Create(OpCodes.Ldloc, taskVar),
+            il.Create(OpCodes.Brfalse_S, insertAt),
+            il.Create(OpCodes.Ldstr, "ForceCompleteV2: instance start fail complete task "),
+            CloneInstruction(il, packetLoad),
+            il.Create(OpCodes.Ldfld, taskNumField),
+            il.Create(OpCodes.Call, toString),
+            il.Create(OpCodes.Call, logMethod),
+            il.Create(OpCodes.Br_S, emitSite)
+        };
+
+        foreach (var ins in gate.Reverse())
+        {
+            il.InsertBefore(insertAt, ins);
+        }
+
+        il.InsertBefore(insertAt, emitSite);
+        ChainIlSplice.SpliceEmit(il, insertAt, method, type, donorEmit, taskVar);
+        il.InsertBefore(insertAt, il.Create(OpCodes.Ret));
 
         IlStackHelper.RefreshMaxStack(body);
-        Console.WriteLine($"ProcessStartFail: chain handler hook injected (MaxStack={body.MaxStackSize}).");
+        Console.WriteLine($"ProcessStartFail: inline chain hook injected (MaxStack={body.MaxStackSize}).");
     }
 
     private static bool HasChainHook(MethodBody body) =>
         body.Instructions.Any(i =>
-            i.OpCode == OpCodes.Call &&
-            i.Operand is MethodReference mr &&
-            mr.Name == "ForceCompleteOnStartFail");
+            i.OpCode == OpCodes.Ldstr &&
+            i.Operand as string == "ForceCompleteV2: instance start fail complete task ");
 
-    private static Instruction CloneInstruction(ILProcessor il, Instruction src)
-    {
-        return src.Operand switch
+    private static Instruction CloneInstruction(ILProcessor il, Instruction src) =>
+        src.Operand switch
         {
             null => il.Create(src.OpCode),
             VariableDefinition v => il.Create(src.OpCode, v),
@@ -91,7 +108,6 @@ internal static class PatchProcessStartFailChain
             float f => il.Create(src.OpCode, f),
             double d => il.Create(src.OpCode, d),
             Instruction target => il.Create(src.OpCode, target),
-            _ => throw new InvalidOperationException("ProcessStartFail: unsupported operand clone.")
+            _ => throw new System.InvalidOperationException("ProcessStartFail: unsupported operand clone.")
         };
-    }
 }

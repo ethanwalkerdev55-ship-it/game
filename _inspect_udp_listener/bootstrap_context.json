@@ -1,0 +1,71 @@
+﻿{
+    "ffcache":  {
+                    "assetInfo_content":  "file:///D:/work/roberto/6877b37c-e9cd-4826-b82c-5e8d3d5db744/",
+                    "main.unity3d":  {
+                                         "path":  "C:\\Users\\root\\AppData\\Local\\OpenFusionLauncher\\ffcache\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\main.unity3d",
+                                         "mtime":  "2026-06-09T18:54:12.2062882Z",
+                                         "hash":  "a61b966f09b3ea4c0776bac0b1a4ffe3c42c17894f731ee13b0596e49a9cd119",
+                                         "size":  7111202,
+                                         "exists":  true
+                                     },
+                    "exists":  true,
+                    "dir":  "C:\\Users\\root\\AppData\\Local\\OpenFusionLauncher\\ffcache\\6877b37c-e9cd-4826-b82c-5e8d3d5db744",
+                    "rankUrl.txt":  {
+                                        "path":  "C:\\Users\\root\\AppData\\Local\\OpenFusionLauncher\\ffcache\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\rankUrl.txt",
+                                        "mtime":  "2026-06-09T23:52:56.1047642Z",
+                                        "hash":  "fcdcf73a1f70dc91dd13ae390f6612750717524f5408897bbc24b410494bc9ba",
+                                        "size":  35,
+                                        "exists":  true
+                                    },
+                    "assetInfo.php":  {
+                                          "path":  "C:\\Users\\root\\AppData\\Local\\OpenFusionLauncher\\ffcache\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\assetInfo.php",
+                                          "mtime":  "2026-06-09T23:52:56.1036909Z",
+                                          "hash":  "1f0340e5e9dcfb98e5ecc34602ca2bd763960a21fdda78979f5845dbb2a5d424",
+                                          "size":  61,
+                                          "exists":  true
+                                      }
+                },
+    "ffrunner_log":  {
+                         "path":  "C:\\Users\\root\\AppData\\Local\\OpenFusionLauncher\\ffrunner.log",
+                         "mtime":  "2026-06-05T15:30:03.5665194Z",
+                         "hash":  "1d62d302c7056129720ce9227920b5f558c6dd4185c338dc6de4025101d2dd89",
+                         "size":  3876,
+                         "exists":  true
+                     },
+    "note":  "Requesting to assetInfo.php is a REQUEST-START log line, not the failure. Stall means local WWW never completed.",
+    "manifest":  {
+                     "main_hash":  "a61b966f09b3ea4c0776bac0b1a4ffe3c42c17894f731ee13b0596e49a9cd119",
+                     "read_only":  true,
+                     "main_size":  7111202,
+                     "path":  "C:\\Users\\root\\AppData\\Roaming\\OpenFusionLauncher\\versions\\6877b37c-e9cd-4826-b82c-5e8d3d5db744.json",
+                     "exists":  true,
+                     "main_file_url":  "file:///D:/work/roberto/6877b37c-e9cd-4826-b82c-5e8d3d5db744/main.unity3d"
+                 },
+    "captured_at":  "2026-06-09T23:52:56.6311359Z",
+    "offline":  {
+                    "assetInfo_content":  "file:///D:/work/roberto/6877b37c-e9cd-4826-b82c-5e8d3d5db744/",
+                    "main.unity3d":  {
+                                         "path":  "D:\\work\\roberto\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\main.unity3d",
+                                         "mtime":  "2026-06-09T18:54:12.2062882Z",
+                                         "hash":  "a61b966f09b3ea4c0776bac0b1a4ffe3c42c17894f731ee13b0596e49a9cd119",
+                                         "size":  7111202,
+                                         "exists":  true
+                                     },
+                    "exists":  true,
+                    "dir":  "D:\\work\\roberto\\6877b37c-e9cd-4826-b82c-5e8d3d5db744",
+                    "rankUrl.txt":  {
+                                        "path":  "D:\\work\\roberto\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\rankUrl.txt",
+                                        "mtime":  "2026-06-09T23:52:56.1047642Z",
+                                        "hash":  "fcdcf73a1f70dc91dd13ae390f6612750717524f5408897bbc24b410494bc9ba",
+                                        "size":  35,
+                                        "exists":  true
+                                    },
+                    "assetInfo.php":  {
+                                          "path":  "D:\\work\\roberto\\6877b37c-e9cd-4826-b82c-5e8d3d5db744\\assetInfo.php",
+                                          "mtime":  "2026-06-09T23:52:56.1036909Z",
+                                          "hash":  "1f0340e5e9dcfb98e5ecc34602ca2bd763960a21fdda78979f5845dbb2a5d424",
+                                          "size":  61,
+                                          "exists":  true
+                                      }
+                }
+}

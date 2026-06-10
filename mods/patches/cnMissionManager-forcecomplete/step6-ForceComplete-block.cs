@@ -1,20 +1,38 @@
-﻿// Donor: public ForceCompleteCurrentTask — same entry path as client's dnSpy patch (hotkey callvirt target).
+﻿// Donor: public ForceCompleteCurrentTask — doc504h (NPC only if SearchTableID; else 0 — avoids RTC silent return)
 
 	public void ForceCompleteCurrentTask()
 	{
-		cnMissionNode forceCompleteTarget = this.GetForceCompleteTarget();
-		if (forceCompleteTarget == null || forceCompleteTarget.GetMe() == null)
+		Logger.Log("ForceCompleteV2: patch build 2026-06-09-doc504h");
+		cnMissionNode target = this.SelectMissionTask;
+		if (target == null || target.GetMe() == null)
 		{
-			Logger.Log("ForceCompleteV2: no active mission task - select mission in journal first");
+			target = this.GetSelectedActiveMission();
+		}
+		if (target == null || target.GetMe() == null)
+		{
+			if (this.m_ActivateMissionList.Count > 0)
+			{
+				target = (cnMissionNode)this.m_ActivateMissionList[this.m_ActivateMissionList.Count - 1];
+			}
+		}
+		if (target == null || target.GetMe() == null)
+		{
 			return;
 		}
-		int taskId = forceCompleteTarget.GetMe().m_iHTaskID;
-		Logger.Log("ForceCompleteV2: patch build 2026-06-07-fct-restore");
-		Logger.Log("ForceCompleteV2: start chain task " + taskId.ToString());
-		this.DelMissionTaskChecker(taskId);
-		this.bForceCompleteChain = true;
-		this.m_iForceCompleteChainDepth = 0;
-		this.m_iForceCompletePendingTaskId = 0;
-		this.m_iForceCompleteRetryCount = 0;
-		this.TryForceCompleteChainTask(forceCompleteTarget);
+		MissionElement me = target.GetMe();
+		Logger.Log("ForceCompleteV2: hotkey target task " + me.m_iHTaskID.ToString());
+		this.m_iloopTemp = 1;
+		target.m_aiCurrentRemainEnemyNum[0] = 0;
+		target.m_aiCurrentRemainEnemyNum[1] = 0;
+		target.m_aiCurrentRemainEnemyNum[2] = 0;
+		target.m_aiCurrentRemainItemNum[0] = 0;
+		target.m_aiCurrentRemainItemNum[1] = 0;
+		target.m_aiCurrentRemainItemNum[2] = 0;
+		bool err = me.m_iRequireInstanceID == 12 && (this.ownstatus == null || this.ownstatus.iInsMapNum != 12);
+		int npc = 0;
+		if (!err && me.m_iHTerminatorNPCID != 0 && this.pNpcContainer.SearchTableID(me.m_iHTerminatorNPCID))
+		{
+			npc = me.m_iHTerminatorNPCID;
+		}
+		this.RequestTaskComplete(me.m_iHTaskID, npc, err);
 	}

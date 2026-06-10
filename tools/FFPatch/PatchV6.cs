@@ -203,8 +203,9 @@ internal static class PatchV6
             return;
         }
 
-        var depthField = type.Fields.First(f => f.Name == "m_iForceCompleteChainDepth");
-        var chainField = type.Fields.First(f => f.Name == "bForceCompleteChain");
+        var depthField = type.Fields.FirstOrDefault(f => f.Name == "m_iForceCompleteChainDepth")
+            ?? type.Fields.First(f => f.Name == "m_iloopTemp");
+        var chainField = type.Fields.FirstOrDefault(f => f.Name == "bForceCompleteChain");
 
         Instruction? getTaskCall = null;
         for (var i = 0; i < body.Instructions.Count - 2; i++)
@@ -243,19 +244,25 @@ internal static class PatchV6
         }
 
         var il = body.GetILProcessor();
-        var block = new[]
+        var block = new List<Instruction>
         {
             il.Create(OpCodes.Ldarg_0),
             il.Create(OpCodes.Ldfld, depthField),
             il.Create(OpCodes.Ldc_I4_0),
-            il.Create(OpCodes.Bgt_S, getTaskCall),
-            il.Create(OpCodes.Ldarg_0),
-            il.Create(OpCodes.Ldfld, chainField),
-            il.Create(OpCodes.Brtrue_S, getTaskCall)
+            il.Create(OpCodes.Bgt_S, getTaskCall)
         };
 
-        InsertAfterInOrder(il, insertAfter, block);
-        Console.WriteLine("RequestTaskComplete: bypass checker when chain depth > 0 or bForceCompleteChain");
+        if (chainField != null)
+        {
+            block.Add(il.Create(OpCodes.Ldarg_0));
+            block.Add(il.Create(OpCodes.Ldfld, chainField));
+            block.Add(il.Create(OpCodes.Brtrue_S, getTaskCall));
+        }
+
+        InsertAfterInOrder(il, insertAfter, block.ToArray());
+        Console.WriteLine(chainField == null
+            ? "RequestTaskComplete: bypass checker when chain depth > 0"
+            : "RequestTaskComplete: bypass checker when chain depth > 0 or bForceCompleteChain");
     }
 
     internal static void PatchTryForceCompleteSkipTimerDefer(TypeDefinition type)
@@ -435,7 +442,7 @@ internal static class PatchV6
         }
     }
 
-    private static void PatchRequestTaskCompleteAlwaysLogSent(TypeDefinition type)
+    internal static void PatchRequestTaskCompleteAlwaysLogSent(TypeDefinition type)
     {
         var method = type.Methods.First(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
         var body = method.Body;
@@ -472,7 +479,7 @@ internal static class PatchV6
         {
             if (body.Instructions[i].OpCode == OpCodes.Ldfld &&
                 body.Instructions[i].Operand is FieldReference fr &&
-                fr.Name == "m_iForceCompleteChainDepth" &&
+                (fr.Name == "m_iForceCompleteChainDepth" || fr.Name == "m_iloopTemp") &&
                 body.Instructions[i + 1].OpCode == OpCodes.Ldc_I4_0 &&
                 body.Instructions[i + 2].OpCode == OpCodes.Bgt_S)
             {

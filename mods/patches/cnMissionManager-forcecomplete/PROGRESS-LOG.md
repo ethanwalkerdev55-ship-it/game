@@ -147,3 +147,25 @@ Search keywords: `ForceCompleteV2`, `mission autocomplete`, `cnMissionManager`, 
 - Log: `ForceCompleteV2: start chain task` in `fusionfall_log.txt` after hotkey (F11 / key 305)
 
 
+
+## 2026-06-09 — doc504 staging DONE ✓
+
+
+
+**What:** Doc-driven mission completion (`EmitDocCompletePacket`) per [`MISSION-PACKET-COMPLETION.md`](../../docs/MISSION-PACKET-COMPLETION.md).
+
+
+
+**Build stamp:** `ForceCompleteV2: patch build 2026-06-08-doc504`
+
+
+
+**Staging:** `apply-mission-patch-staging.bat` + `run-verify-staging.bat` — all gates pass.
+
+
+
+**Deployed 2026-06-09:** `apply-mission-patch-client-deploy.bat` — bundle **7126766** hash `394b4ded…` (+1661 B vs vanilla). `launch-patched-client.bat` run; manifest+ffcache pinned.
+
+**Test:** Quit/reopen launcher → Connect → **Right Ctrl** (key 305) with mission selected → log `ForceCompleteV2: patch build 2026-06-08-doc504`.
+
+

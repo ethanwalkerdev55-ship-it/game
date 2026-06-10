@@ -49,24 +49,34 @@ function Get-ForceCompleteMethod($file) {
 }
 
 $memberLines = Get-Content (Join-Path $patchDir "add-class-members-compile-paste.txt")
-$membersText = ($memberLines | Select-Object -Skip 8 | Select-Object -SkipLast 1) -join "`n"
-
-$asyncFiles = @(
-    "step1-Update.cs",
-    "step2-ProcessStartSucc.cs",
-    "step3-ProcessStartFail.cs",
-    "step4-ProcessEndSucc.cs",
-    "step5-ProcessEndFail.cs"
-)
+$memberStart = -1
+for ($i = 0; $i -lt $memberLines.Count; $i++) {
+    if ($memberLines[$i] -match '^\s*public\s+partial\s+class\s+cnMissionManager') {
+        $memberStart = $i + 1
+        break
+    }
+}
+if ($memberStart -lt 0) {
+    throw "cnMissionManager partial class not found in add-class-members-compile-paste.txt"
+}
+while ($memberStart -lt $memberLines.Count -and $memberLines[$memberStart] -match '^\s*$') {
+    $memberStart++
+}
+if ($memberStart -lt $memberLines.Count -and $memberLines[$memberStart] -match '^\s*\{') {
+    $memberStart++
+}
+$memberEnd = $memberLines.Count - 1
+while ($memberEnd -gt $memberStart -and $memberLines[$memberEnd] -match '^\s*$') {
+    $memberEnd--
+}
+if ($memberEnd -gt $memberStart -and $memberLines[$memberEnd] -match '^\s*\}') {
+    $memberEnd--
+}
+$membersText = ($memberLines[$memberStart..$memberEnd] -join "`n")
 
 $methods = @(
-    (Get-ForceCompleteMethod (Join-Path $patchDir "step6-ForceComplete-block.cs")),
-    (Get-MethodBody (Join-Path $patchDir "step8-RequestTaskComplete.cs"))
+    (Get-ForceCompleteMethod (Join-Path $patchDir "step6-ForceComplete-block.cs"))
 )
-
-foreach ($file in $asyncFiles) {
-    $methods += Get-MethodBody (Join-Path $patchDir $file)
-}
 
 $methodsText = ($methods -join "`n`n")
 

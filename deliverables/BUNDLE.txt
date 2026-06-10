@@ -1,4 +1,8 @@
-﻿main.unity3d — customer deliverable bundle
-size=7113528
-sha256=15388e0b01c7cc256a4b2ee4c8a2135bc6faefa1e136402ac4ed40472bd29873
-updated=2026-06-08
+﻿main.unity3d — customer deliverable bundle
+size=7111202
+sha256=a61b966f09b3ea4c0776bac0b1a4ffe3c42c17894f731ee13b0596e49a9cd119
+build=doc504h
+stamp=ForceCompleteV2: patch build 2026-06-09-doc504h
+updated=2026-06-09
+
+Deploy instructions: deliverables/CLIENT-DEPLOY.md

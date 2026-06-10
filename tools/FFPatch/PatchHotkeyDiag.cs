@@ -8,8 +8,6 @@ namespace FFPatch;
 /// <summary>Ensure F11 / Right Ctrl calls public ForceCompleteCurrentTask (private handlers fail silently from cnAvatarAttack).</summary>
 internal static class PatchHotkeyDiag
 {
-    private const string LogLine = "ForceCompleteV2: hotkey pressed (F11/RightCtrl)";
-
     internal static void Apply(AssemblyDefinition asm)
     {
         var attackType = asm.MainModule.Types.FirstOrDefault(t => t.Name == "cnAvatarAttack")
@@ -27,8 +25,6 @@ internal static class PatchHotkeyDiag
             ?? throw new InvalidOperationException("cnAvatarAttack.Update not found.");
 
         var body = update.Body;
-        var il = body.GetILProcessor();
-        var logger = ResolveLogger(asm, mgrType);
 
         var hotkeyCall = FindHotkeyCall(body)
             ?? throw new InvalidOperationException("cnAvatarAttack.Update: mission hotkey call not found.");
@@ -42,12 +38,6 @@ internal static class PatchHotkeyDiag
             hotkeyCall.OpCode = OpCodes.Callvirt;
             hotkeyCall.Operand = fctRef;
             Console.WriteLine("cnAvatarAttack: hotkey retargeted to public ForceCompleteCurrentTask");
-        }
-
-        if (!body.Instructions.Any(i => i.OpCode == OpCodes.Ldstr && LogLine.Equals(i.Operand as string)))
-        {
-            il.InsertBefore(hotkeyCall, il.Create(OpCodes.Ldstr, LogLine));
-            il.InsertBefore(hotkeyCall, il.Create(OpCodes.Call, logger));
         }
 
         IlStackHelper.RefreshMaxStack(body);
@@ -75,29 +65,5 @@ internal static class PatchHotkeyDiag
         }
 
         return null;
-    }
-
-    private static MethodReference ResolveLogger(AssemblyDefinition asm, TypeDefinition mgrType)
-    {
-        foreach (var method in mgrType.Methods)
-        {
-            if (method.Body == null)
-            {
-                continue;
-            }
-
-            foreach (var ins in method.Body.Instructions)
-            {
-                if (ins.OpCode == OpCodes.Call &&
-                    ins.Operand is MethodReference mr &&
-                    mr.Name == "Log" &&
-                    mr.Parameters.Count == 1)
-                {
-                    return asm.MainModule.ImportReference(mr);
-                }
-            }
-        }
-
-        throw new InvalidOperationException("Logger.Log not found via cnMissionManager.");
     }
 }

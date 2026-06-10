@@ -12,21 +12,8 @@ namespace FFPatch;
 /// </summary>
 internal static class BuildClientMissionSafe
 {
-    private static readonly string[] NewMethodNames =
-    {
-        "GetForceCompleteTarget",
-        "PrepareTaskForForceComplete",
-        "NeedsForceCompleteTaskStart",
-        "ResolveForceCompleteTerminatorNpcId",
-        "ClearForceCompleteChain",
-        "ForceCompleteEmitTaskEndPacket",
-        "RequestForceCompleteTaskEnd",
-        "TryForceCompleteChainTask",
-        "ForceCompleteOnEndFail",
-        "ForceCompleteOnEndSucc",
-        "ForceCompleteOnStartFail",
-        "ForceCompleteOnStartSucc"
-    };
+    // Donor helpers stay in DonorCompile only — spliced inline (zero new MethodDefs).
+    private static readonly string[] NewMethodNames = Array.Empty<string>();
 
     public static bool Apply(string targetDll, string clientBaseDll)
     {
@@ -56,7 +43,7 @@ internal static class BuildClientMissionSafe
             return false;
         }
 
-        if (!InjectSafe(workDll, donorDll))
+        if (!InjectSafe(workDll, donorDll, clientBaseDll))
         {
             File.Delete(workDll);
             return false;
@@ -64,16 +51,6 @@ internal static class BuildClientMissionSafe
 
         File.Copy(workDll, targetDll, true);
         File.Delete(workDll);
-
-        if (!PatchSafeClient.Apply(targetDll))
-        {
-            return false;
-        }
-
-        if (!RefreshAllMethodMaxStacks(targetDll))
-        {
-            return false;
-        }
 
         if (!PatchVerify.Run(targetDll, liteMode: true))
         {
@@ -85,12 +62,12 @@ internal static class BuildClientMissionSafe
             return false;
         }
 
-        if (!PatchVerify.VerifyInstanceCompletePath(targetDll))
+        if (!PatchVerify.VerifyBootstrapPath(targetDll))
         {
             return false;
         }
 
-        if (!PatchVerify.VerifyDirectSendPath(targetDll))
+        if (!PatchVerify.VerifyInstanceCompletePath(targetDll))
         {
             return false;
         }
@@ -99,38 +76,20 @@ internal static class BuildClientMissionSafe
         return true;
     }
 
-    private static bool InjectSafe(string targetDll, string donorDll)
+    private static bool InjectSafe(string targetDll, string donorDll, string clientBaseDll)
     {
         var resolver = new DefaultAssemblyResolver();
         resolver.AddSearchDirectory(Path.GetDirectoryName(targetDll)!);
         resolver.AddSearchDirectory(Path.GetDirectoryName(donorDll)!);
 
-        var tempPath = targetDll + ".client-safe.tmp";
+        var dnlibOut = targetDll + ".dnlib-slot.tmp";
+        TypeDefinition? patchedMissionType = null;
         using (var target = AssemblyDefinition.ReadAssembly(targetDll, new ReaderParameters { AssemblyResolver = resolver }))
         using (var donor = AssemblyDefinition.ReadAssembly(donorDll, new ReaderParameters { AssemblyResolver = resolver }))
         {
             var targetType = target.MainModule.Types.First(t => t.Name == "cnMissionManager");
             var donorType = donor.MainModule.Types.First(t => t.Name == "cnMissionManagerV2Donor");
-
-            AddFields(targetType, target.MainModule);
-
-            foreach (var name in NewMethodNames)
-            {
-                var donorMethod = donorType.Methods.First(m => m.Name == name && !m.HasGenericParameters);
-                var existing = targetType.Methods.FirstOrDefault(m => m.Name == name && !m.HasGenericParameters);
-                if (existing != null)
-                {
-                    Program.CopyMethodBody(donorMethod, existing, target.MainModule);
-                    IlStackHelper.RefreshMaxStack(existing.Body);
-                    Console.WriteLine("Refreshed method: " + name);
-                    continue;
-                }
-
-                var added = CloneMethod(donorMethod, target.MainModule, targetType);
-                IlStackHelper.RefreshMaxStack(added.Body);
-                targetType.Methods.Add(added);
-                Console.WriteLine("Added method: " + name);
-            }
+            patchedMissionType = targetType;
 
             var fctDonor = donorType.Methods.First(m => m.Name == "ForceCompleteCurrentTask" && !m.HasGenericParameters);
             var fctTarget = targetType.Methods.First(m => m.Name == "ForceCompleteCurrentTask" && !m.HasGenericParameters);
@@ -138,23 +97,17 @@ internal static class BuildClientMissionSafe
             IlStackHelper.RefreshMaxStack(fctTarget.Body);
             Console.WriteLine("Injected: ForceCompleteCurrentTask (client chain entry)");
 
-            var rtcDonor = donorType.Methods.First(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
-            var rtcTarget = targetType.Methods.First(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
-            Program.CopyMethodBody(rtcDonor, rtcTarget, target.MainModule);
-            IlStackHelper.RefreshMaxStack(rtcTarget.Body);
-            Console.WriteLine("Injected: RequestTaskComplete (step8 checker bypass + diagnostics)");
+            // Surgical RTC chain bypass only — full donor transplant adds ~10KB and breaks UnityWeb inject size budget.
+            PatchV6.PatchRequestTaskCompleteChainBypass(targetType);
+            Console.WriteLine("Patched: RequestTaskComplete (surgical chain bypass)");
 
-            PatchRetargetRequestTaskCompleteCalls.Apply(targetType);
-            PatchCustomerUpdate.InjectPendingTimerDefer(targetType);
-
+            PatchV6.PatchForceCompleteRemoveDelChecker(targetType);
             PatchV6.PatchForceCompleteSkipCheckerGate(targetType);
-            PatchProcessEndFailGuard.Apply(targetType);
-            PatchProcessEndFailChain.Apply(targetType);
-            PatchProcessEndSuccChain.Apply(targetType);
-            PatchProcessStartFailChain.Apply(targetType);
-            PatchProcessStartSuccBlock.Apply(targetType);
-            PatchProcessStartSuccChain.Apply(targetType);
-            PatchHostResponseDiag.Apply(targetType);
+
+            // ProcessStartSucc / ProcessEndFail hooks deferred (+512 B each vs 1520640 slot).
+            // doc504g trades them for terminator-NPC RTC (persistence fix for Talk/GotoLocation).
+
+            // ProcessEndSucc chain hook deferred if dnlib slot-fit fails (+512 B).
 
             foreach (var method in targetType.Methods)
             {
@@ -165,12 +118,18 @@ internal static class BuildClientMissionSafe
             }
 
             PatchHotkeyDiag.Apply(target);
+            RepairDanglingBranches(patchedMissionType);
+            ValidateIlOperands(patchedMissionType);
+            ValidateBranchTargets(patchedMissionType);
 
-            target.Write(tempPath);
+            if (!DnlibPreserveWriter.Write(dnlibOut, clientBaseDll, patchedMissionType))
+            {
+                return false;
+            }
         }
 
-        File.Copy(tempPath, targetDll, true);
-        File.Delete(tempPath);
+        File.Copy(dnlibOut, targetDll, true);
+        File.Delete(dnlibOut);
         return true;
     }
 
@@ -197,14 +156,98 @@ internal static class BuildClientMissionSafe
         return true;
     }
 
+    private static void ValidateIlOperands(TypeDefinition type)
+    {
+        foreach (var method in type.Methods.Where(m => m.HasBody))
+        {
+            for (var i = 0; i < method.Body!.Instructions.Count; i++)
+            {
+                var ins = method.Body.Instructions[i];
+                if (ins.OpCode.OperandType != OperandType.InlineNone && ins.Operand == null)
+                {
+                    throw new InvalidOperationException(
+                        "InjectSafe: null IL operand in " + method.Name + " at index " + i + " opcode " + ins.OpCode);
+                }
+            }
+        }
+    }
+
+    private static void RepairDanglingBranches(TypeDefinition type)
+    {
+        foreach (var method in type.Methods.Where(m => m.HasBody))
+        {
+            var body = method.Body!;
+            var insn = body.Instructions;
+            if (insn.Count == 0)
+            {
+                continue;
+            }
+
+            var set = new System.Collections.Generic.HashSet<Instruction>(insn);
+            var fallback = insn.Last(i => i.OpCode == OpCodes.Ret);
+            var repaired = 0;
+            foreach (var ins in insn)
+            {
+                if (ins.Operand is Instruction target && !set.Contains(target))
+                {
+                    ins.Operand = fallback;
+                    repaired++;
+                }
+                else if (ins.Operand is Instruction[] targets)
+                {
+                    for (var i = 0; i < targets.Length; i++)
+                    {
+                        if (!set.Contains(targets[i]))
+                        {
+                            targets[i] = fallback;
+                            repaired++;
+                        }
+                    }
+                }
+            }
+
+            if (repaired > 0)
+            {
+                Console.WriteLine($"InjectSafe: repaired {repaired} dangling branch(es) in {method.Name}.");
+            }
+        }
+    }
+
+    private static void ValidateBranchTargets(TypeDefinition type)
+    {
+        foreach (var method in type.Methods.Where(m => m.HasBody))
+        {
+            var body = method.Body!;
+            var insn = body.Instructions;
+            var set = new System.Collections.Generic.HashSet<Instruction>(insn);
+            for (var i = 0; i < insn.Count; i++)
+            {
+                switch (insn[i].Operand)
+                {
+                    case Instruction target when !set.Contains(target):
+                        throw new InvalidOperationException(
+                            "InjectSafe: dangling branch in " + method.Name + " at index " + i);
+                    case Instruction[] targets:
+                        foreach (var t in targets)
+                        {
+                            if (!set.Contains(t))
+                            {
+                                throw new InvalidOperationException(
+                                    "InjectSafe: dangling switch branch in " + method.Name + " at index " + i);
+                            }
+                        }
+
+                        break;
+                }
+            }
+        }
+    }
+
     private static void AddFields(TypeDefinition targetType, ModuleDefinition module)
     {
         foreach (var (name, isBool) in new[]
         {
-            ("bForceCompleteChain", true),
-            ("m_iForceCompleteChainDepth", false),
-            ("m_iForceCompletePendingTaskId", false),
-            ("m_iForceCompleteRetryCount", false)
+            ("m_iForceCompleteChainDepth", false)
         })
         {
             if (targetType.Fields.Any(f => f.Name == name))

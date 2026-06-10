@@ -32,7 +32,7 @@ internal static class PatchCustomerUpdate
 
         FieldReference BorrowField(string name)
         {
-            foreach (var helperName in new[] { "TryForceCompleteChainTask", "PrepareTaskForForceComplete", "NeedsForceCompleteTaskStart" })
+            foreach (var helperName in new[] { "TryForceCompleteChainTask", "PrepareTaskForDocComplete", "EmitDocCompletePacket" })
             {
                 var helper = type.Methods.FirstOrDefault(m => m.Name == helperName && m.Body != null);
                 if (helper?.Body == null)

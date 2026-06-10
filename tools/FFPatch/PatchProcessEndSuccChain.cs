@@ -5,19 +5,11 @@ using Mono.Cecil.Cil;
 
 namespace FFPatch;
 
-/// <summary>
-/// Surgical ProcessEndSucc: advance force-complete chain instead of vanilla RequestTaskStart.
-/// </summary>
 internal static class PatchProcessEndSuccChain
 {
-    internal static void Apply(TypeDefinition type)
+    internal static void Apply(TypeDefinition type, TypeDefinition donorType)
     {
-        var handler = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteOnEndSucc");
-        if (handler == null)
-        {
-            throw new InvalidOperationException("ForceCompleteOnEndSucc missing — build donor first.");
-        }
-
+        _ = donorType;
         var method = type.Methods.First(m => m.Name == "ProcessEndSucc");
         var body = method.Body;
         if (HasChainHook(body))
@@ -26,93 +18,87 @@ internal static class PatchProcessEndSuccChain
             return;
         }
 
-        var getTaskCall = body.Instructions.FirstOrDefault(i =>
-            i.OpCode == OpCodes.Call &&
-            i.Operand is MethodReference mr &&
-            mr.Name == "GetTask");
-        if (getTaskCall == null)
-        {
-            throw new InvalidOperationException("ProcessEndSucc: GetTask call not found.");
-        }
-
-        VariableDefinition? taskVar = null;
-        var scan = getTaskCall.Next;
-        for (var n = 0; n < 8 && scan != null; n++, scan = scan.Next)
-        {
-            if (scan.OpCode == OpCodes.Stloc && scan.Operand is VariableDefinition v)
-            {
-                taskVar = v;
-                break;
-            }
-
-            if (scan.OpCode == OpCodes.Stloc_0 || scan.OpCode == OpCodes.Stloc_1 ||
-                scan.OpCode == OpCodes.Stloc_2 || scan.OpCode == OpCodes.Stloc_3)
-            {
-                var idx = scan.OpCode.Value - OpCodes.Stloc_0.Value;
-                if (idx < body.Variables.Count)
-                {
-                    taskVar = body.Variables[idx];
-                    break;
-                }
-            }
-        }
-
-        if (taskVar == null)
-        {
-            throw new InvalidOperationException("ProcessEndSucc: task local not found.");
-        }
-
+        var taskVar = FindTaskLocal(body);
         var outgoingField = body.Instructions
             .Select(i => i.Operand as FieldReference)
-            .FirstOrDefault(fr => fr?.Name == "m_iSUOutgoingTask");
-        if (outgoingField == null)
-        {
-            throw new InvalidOperationException("ProcessEndSucc: m_iSUOutgoingTask field ref not found.");
-        }
-
+            .First(fr => fr?.Name == "m_iSUOutgoingTask");
         var anchor = body.Instructions.First(i =>
-            i.OpCode == OpCodes.Ldfld && ReferenceEquals(i.Operand, outgoingField));
-        if (anchor == null)
-        {
-            anchor = body.Instructions.First(i =>
-                i.OpCode == OpCodes.Ldfld &&
-                i.Operand is FieldReference fr &&
-                fr.Name == "m_iSUOutgoingTask");
-        }
-
-        if (anchor == null)
-        {
-            throw new InvalidOperationException("ProcessEndSucc: outgoing task anchor not found.");
-        }
-
+            i.OpCode == OpCodes.Ldfld &&
+            (ReferenceEquals(i.Operand, outgoingField) ||
+             (i.Operand is FieldReference fr && fr.Name == "m_iSUOutgoingTask")));
         while (anchor.Previous != null && anchor.Previous.OpCode != OpCodes.Callvirt)
         {
             anchor = anchor.Previous;
         }
 
+        var loopTemp = type.Fields.First(f => f.Name == "m_iloopTemp");
+        var nextVar = new VariableDefinition(type.Module.ImportReference(
+            type.Module.Types.First(t => t.Name == "cnMissionNode")));
+        body.Variables.Add(nextVar);
+        var getNext = type.Methods.First(m => m.Name == "GetNextTaskNode" && m.Parameters.Count == 1);
+        var getMe = IlLookup.FindGetMe(type.Module);
+        var taskIdField = IlLookup.FindField(body, "m_iHTaskID");
+        var rtc = type.Methods.First(m => m.Name == "RequestTaskComplete" && m.Parameters.Count == 3);
         var il = body.GetILProcessor();
         var cont = anchor;
-        var block = new[]
-        {
-            il.Create(OpCodes.Ldarg_0),
-            il.Create(OpCodes.Ldloc, taskVar),
-            il.Create(OpCodes.Call, handler),
-            il.Create(OpCodes.Brfalse_S, cont),
-            il.Create(OpCodes.Ret)
-        };
 
-        foreach (var ins in block.Reverse())
-        {
-            il.InsertBefore(cont, ins);
-        }
+        il.InsertBefore(cont, il.Create(OpCodes.Ldarg_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldfld, loopTemp));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldc_I4_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Ble_S, cont));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldarg_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldloc, taskVar));
+        il.InsertBefore(cont, il.Create(OpCodes.Call, getNext));
+        il.InsertBefore(cont, il.Create(OpCodes.Stloc, nextVar));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldloc, nextVar));
+        il.InsertBefore(cont, il.Create(OpCodes.Brfalse_S, cont));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldloc, nextVar));
+        il.InsertBefore(cont, il.Create(OpCodes.Callvirt, getMe));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldfld, taskIdField));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldc_I4_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldc_I4_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Call, rtc));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldarg_0));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldfld, loopTemp));
+        il.InsertBefore(cont, il.Create(OpCodes.Ldc_I4_1));
+        il.InsertBefore(cont, il.Create(OpCodes.Add));
+        il.InsertBefore(cont, il.Create(OpCodes.Stfld, loopTemp));
+        il.InsertBefore(cont, il.Create(OpCodes.Ret));
 
         IlStackHelper.RefreshMaxStack(body);
-        Console.WriteLine($"ProcessEndSucc: chain handler hook injected (MaxStack={body.MaxStackSize}).");
+        Console.WriteLine($"ProcessEndSucc: minimal chain hook injected (MaxStack={body.MaxStackSize}).");
+    }
+
+    private static VariableDefinition FindTaskLocal(MethodBody body)
+    {
+        var getTaskCall = body.Instructions.First(i =>
+            i.OpCode == OpCodes.Call && i.Operand is MethodReference mr && mr.Name == "GetTask");
+        var scan = getTaskCall.Next;
+        for (var n = 0; n < 8 && scan != null; n++, scan = scan.Next)
+        {
+            if (scan.OpCode == OpCodes.Stloc && scan.Operand is VariableDefinition v)
+            {
+                return v;
+            }
+
+            if (scan.OpCode == OpCodes.Stloc_0 || scan.OpCode == OpCodes.Stloc_1 ||
+                scan.OpCode == OpCodes.Stloc_2 || scan.OpCode == OpCodes.Stloc_3)
+            {
+                return body.Variables[scan.OpCode.Value - OpCodes.Stloc_0.Value];
+            }
+        }
+
+        throw new InvalidOperationException("ProcessEndSucc: task local not found.");
     }
 
     private static bool HasChainHook(MethodBody body) =>
         body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call &&
             i.Operand is MethodReference mr &&
-            mr.Name == "ForceCompleteOnEndSucc");
+            mr.Name == "GetNextTaskNode") &&
+        body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call &&
+            i.Operand is MethodReference mr &&
+            mr.Name == "RequestTaskComplete" &&
+            mr.Parameters.Count == 3);
 }

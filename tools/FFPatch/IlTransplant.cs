@@ -153,6 +153,12 @@ internal static class IlTransplant
             return module.ImportReference(borrowed);
         }
 
+        var fromRefs = ResolveFieldFromReferences(module, declName, field.Name);
+        if (fromRefs != null)
+        {
+            return fromRefs;
+        }
+
         if (IsAllowedExternalReference(field, module))
         {
             return module.ImportReference(field);
@@ -207,6 +213,12 @@ internal static class IlTransplant
         if (borrowed != null)
         {
             return module.ImportReference(borrowed);
+        }
+
+        var fromRefs = ResolveMethodFromReferences(module, declName, method);
+        if (fromRefs != null)
+        {
+            return fromRefs;
         }
 
         if (IsAllowedExternalReference(method, module))
@@ -357,7 +369,8 @@ internal static class IlTransplant
             return false;
         }
 
-        if (scope.Name.IndexOf("DonorCompile", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (scope.Name.IndexOf("DonorCompile", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            scope.Name.IndexOf("SlashPanelDonor", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             return false;
         }
@@ -400,8 +413,15 @@ internal static class IlTransplant
 
         if (type.Scope is AssemblyNameReference scope)
         {
-            if (scope.Name.IndexOf("DonorCompile", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (scope.Name.IndexOf("DonorCompile", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                scope.Name.IndexOf("SlashPanelDonor", StringComparison.OrdinalIgnoreCase) >= 0)
             {
+                var refType = ResolveTypeFromReferences(module, type.Name);
+                if (refType != null)
+                {
+                    return refType;
+                }
+
                 throw new InvalidOperationException($"IlTransplant: donor type {type.FullName}");
             }
 
@@ -412,6 +432,90 @@ internal static class IlTransplant
         }
 
         throw new InvalidOperationException($"IlTransplant: unresolved type {type.FullName}");
+    }
+
+    private static TypeReference? ResolveTypeFromReferences(ModuleDefinition module, string typeName)
+    {
+        foreach (var type in EnumerateReferencedTypes(module))
+        {
+            if (type.Name == typeName)
+            {
+                return module.ImportReference(type);
+            }
+        }
+
+        return null;
+    }
+
+    private static FieldReference? ResolveFieldFromReferences(ModuleDefinition module, string typeName, string fieldName)
+    {
+        foreach (var type in EnumerateReferencedTypes(module))
+        {
+            if (type.Name != typeName)
+            {
+                continue;
+            }
+
+            var field = type.Fields.FirstOrDefault(f => f.Name == fieldName);
+            if (field != null)
+            {
+                return module.ImportReference(field);
+            }
+        }
+
+        return null;
+    }
+
+    private static MethodReference? ResolveMethodFromReferences(ModuleDefinition module, string typeName, MethodReference source)
+    {
+        foreach (var type in EnumerateReferencedTypes(module))
+        {
+            if (type.Name != typeName)
+            {
+                continue;
+            }
+
+            foreach (var candidate in type.Methods)
+            {
+                if (MethodMatches(candidate, source))
+                {
+                    return module.ImportReference(candidate);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<TypeDefinition> EnumerateReferencedTypes(ModuleDefinition module)
+    {
+        var resolver = module.AssemblyResolver;
+        if (resolver == null)
+        {
+            yield break;
+        }
+
+        foreach (var asmRef in module.AssemblyReferences)
+        {
+            AssemblyDefinition asm;
+            try
+            {
+                asm = resolver.Resolve(asmRef);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var type in asm.MainModule.Types)
+            {
+                yield return type;
+                foreach (var nested in EnumerateNested(type))
+                {
+                    yield return nested;
+                }
+            }
+        }
     }
 
     private static IEnumerable<TypeDefinition> EnumerateTypes(ModuleDefinition module)

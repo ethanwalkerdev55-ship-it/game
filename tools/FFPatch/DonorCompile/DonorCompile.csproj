@@ -1,17 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>disable</Nullable>
-    <OutputPath>bin\Release\</OutputPath>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Remove="PatchedDonor.g.cs" />
-  </ItemGroup>
-  <Target Name="GenerateDonor" BeforeTargets="CoreCompile">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build-donor.ps1&quot;" />
-    <ItemGroup>
-      <Compile Include="$(MSBuildProjectDirectory)\PatchedDonor.g.cs" />
-    </ItemGroup>
-  </Target>
-</Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <OutputPath>bin\Release\</OutputPath>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="PatchedDonor.g.cs" />
+  </ItemGroup>
+  <Target Name="GenerateDonor" BeforeTargets="CoreCompile">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build-donor.ps1&quot;" />
+    <ItemGroup>
+      <Compile Include="$(MSBuildProjectDirectory)\PatchedDonor.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

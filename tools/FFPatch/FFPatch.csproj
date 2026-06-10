@@ -6,10 +6,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="dnlib" Version="4.4.0" />
     <PackageReference Include="Mono.Cecil" Version="0.11.5" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="DonorCompile/**" />
     <None Remove="DonorCompile/**" />
+    <Compile Remove="SlashPanelDonor/**" />
+    <None Remove="SlashPanelDonor/**" />
   </ItemGroup>
 </Project>

@@ -7,6 +7,9 @@ This document defines **how** we track and fix errors on the FusionFall mission 
 | [`ACTIVE-ERROR-QUEUE.md`](ACTIVE-ERROR-QUEUE.md) | **Magazine** — ordered list of open errors (operational) |
 | [`patches/cnMissionManager-forcecomplete/ERROR-TRACKER.md`](patches/cnMissionManager-forcecomplete/ERROR-TRACKER.md) | Evidence, status dashboard, log excerpts |
 | [`patches/cnMissionManager-forcecomplete/PATCH-ERROR-LOG.md`](patches/cnMissionManager-forcecomplete/PATCH-ERROR-LOG.md) | Permanent record of mistakes and root causes |
+| [`STRICT-RULES.md`](STRICT-RULES.md) | **Deploy/load hard rules** — amend before repeating failed paths |
+| [`docs/missions/MISSION-CATALOG.md`](docs/missions/MISSION-CATALOG.md) | **Per-mission table data** — 747 missions, 2866 tasks |
+| [`docs/MISSION-EXECUTION-LOGIC.md`](docs/MISSION-EXECUTION-LOGIC.md) | Generic receive/start/complete logic (applies to all missions) |
 
 ---
 
@@ -76,8 +79,36 @@ Every error gets a stable ID (`ERR-###`) and a card with:
 | Order of work, focus, queue position | `ACTIVE-ERROR-QUEUE.md` |
 | Detailed diagnosis and log archaeology | `ERROR-TRACKER.md` |
 | “We must never do X again” | `PATCH-ERROR-LOG.md` |
+| **Specific mission/task behavior** | `docs/missions/catalog/MISSION-{id}.md` |
 
 Do not duplicate long log dumps in the queue file—link to `ERROR-TRACKER.md` sections.
+
+### 2.5 Mission documentation lookup (mandatory on mission errors)
+
+Every mission failure involves a **mission ID** and **task ID** from the log:
+
+```
+active task id : {task} mission id : {mission} slot : {0-8}
+ProcessEndFail : {task} Error Code : {code}
+Fail Outgoing Task : {failOutgoingTask}
+```
+
+**Before hypothesizing or patching**, resolve the table row:
+
+| Step | Action |
+|------|--------|
+| 1 | Read `mission id` and `active task id` (or `ProcessEndFail` task) from the log |
+| 2 | Open **`docs/missions/catalog/MISSION-{mission}.md`** — task index, chain edges, instance/timer flags, kill quotas, NPCs, packets |
+| 3 | If the mission is unknown or the catalog is stale, regenerate: `python tools/export-mission-catalog.py` |
+| 4 | Cross-check generic flow in **`docs/MISSION-EXECUTION-LOGIC.md`** only where the catalog doc does not answer the question |
+
+**On every error card** record:
+
+- `Mission ID` / `Task ID` (from log)
+- `Mission doc` — link to `catalog/MISSION-{id}.md`
+- `Table fields in scope` — e.g. `m_iRequireInstanceID`, `m_iFOutgoingTask`, `m_iSTGrantTimer` (from the doc, not guessed)
+
+Do not close a mission error without confirming the failure mode matches the **documented** task row (instance gate, timer gate, fail-outgoing chain, kill quota, etc.).
 
 ---
 
@@ -86,7 +117,7 @@ Do not duplicate long log dumps in the queue file—link to `ERROR-TRACKER.md` s
 ### Phase A — Discovery
 
 1. Observe a failure (test, client report, CI, staging gate).
-2. If it is a **new** symptom or root cause, assign `ERR-###` and create a card in `ACTIVE-ERROR-QUEUE.md`.
+2. If it is a **new** symptom or root cause, assign `ERR-###` and create a card in `ACTIVE-ERROR-QUEUE.md`. For mission/task failures, fill **Mission ID**, **Task ID**, and link **Mission doc** (§2.5) on the card immediately.
 3. If the magazine is **empty** and nothing is `IN_PROGRESS`, set the new error to `IN_PROGRESS` (it becomes focused).
 4. If something is already `IN_PROGRESS`, set the new error to `QUEUED` and note **Discovered while: ERR-xxx**.
 
@@ -95,10 +126,11 @@ Do not duplicate long log dumps in the queue file—link to `ERROR-TRACKER.md` s
 For the focused error only:
 
 1. **Reproduce** — same bundle hash, same mission/server steps documented on the card.
-2. **Hypothesize** — one primary theory; optional secondary listed but not acted on in parallel.
-3. **Change** — minimal diff; record files, commands, output hash.
-4. **Stage** — staging DLL / ingest only; never skip gates (see `OPERATING-RULES.md`).
-5. **Verify** — run the card’s verification checklist (§6).
+2. **Look up mission doc** — `catalog/MISSION-{id}.md` for the failing task; note table fields on the card (§2.5).
+3. **Hypothesize** — one primary theory grounded in the mission doc + `MISSION-EXECUTION-LOGIC.md`; optional secondary listed but not acted on in parallel.
+4. **Change** — minimal diff; record files, commands, output hash.
+5. **Stage** — staging DLL / ingest only; never skip gates (see `OPERATING-RULES.md`).
+6. **Verify** — run the card’s verification checklist (§6); re-read mission doc if behavior still mismatches table.
 
 During step 5, if a **different** failure appears:
 
@@ -168,15 +200,23 @@ Every error card must define pass criteria. Minimum by category:
 - [ ] `Resources base url` after `assetInfo.php`
 - [ ] Bundle hash matches card
 
-### Mission autocomplete (504: 466→468→463)
+### Mission autocomplete (any mission)
 
 - [ ] Client bundle is **client’s** build (`ClientMod` / agreed base), not overwritten by DonorCompile-only deploy
-- [ ] One hotkey test; log excerpt attached
+- [ ] Mission doc consulted: `catalog/MISSION-{id}.md` — task chain and table fields recorded on card
+- [ ] One hotkey test; log excerpt attached with `mission id` and `active task id`
+- [ ] No unexpected `Fail Outgoing Task` during active chain (compare to doc § Chain edges)
+- [ ] Instance/timer/kill-quota behavior matches documented task row; outcome documented
+
+### Mission autocomplete (504: 466→468→463 — primary test case)
+
+- [ ] [`catalog/MISSION-504.md`](docs/missions/catalog/MISSION-504.md) — task 463: instance **12**, enemy **2513 ×4**, fail → **466**
 - [ ] No `Fail Outgoing Task : 466` during active chain (if in scope)
 - [ ] Task 463: `ProcessEndFail err 1` handled per design (retry / `bError` / warp)—state outcome documented
 
 ### Timer missions
 
+- [ ] Mission doc consulted — `m_iSTGrantTimer` / `m_iCSUCheckTimer` from `catalog/MISSION-{id}.md`
 - [ ] Timer zeroed or deferred; no “return to NPC” / error 1 without retry path
 - [ ] Log shows defer or `RequestForceCompleteTaskEnd` path
 
@@ -199,6 +239,7 @@ Every error card must define pass criteria. Minimum by category:
 6. **Daily report ties to ERR-###** — “Worked on ERR-002” not “made progress on main.”
 7. **Close before celebrate** — `VERIFIED_FIXED` requires checklist; move diagnosis to `ERROR-TRACKER.md`.
 8. **Mistake → PATCH-ERROR-LOG** — Process failures (wrong base, skipped gate) are logged permanently.
+9. **Mission doc first** — On any mission/task failure, open `catalog/MISSION-{id}.md` before guessing table fields or chain behavior.
 
 ---
 
@@ -246,6 +287,11 @@ Copy into [`ACTIVE-ERROR-QUEUE.md`](ACTIVE-ERROR-QUEUE.md):
 | Discovered | YYYY-MM-DD |
 | Discovered while | ERR-xxx / initial intake |
 | Bundle | size= hash= |
+| Mission ID | (from log) |
+| Task ID | (from log) |
+| Mission doc | [`catalog/MISSION-{id}.md`](docs/missions/catalog/MISSION-{id}.md) |
+
+**Table fields in scope:** (from mission doc — instance, timer, fail-outgoing, quotas)
 
 **Evidence:**
 ```
@@ -273,6 +319,9 @@ Copy into [`ACTIVE-ERROR-QUEUE.md`](ACTIVE-ERROR-QUEUE.md):
 - **Decompile target:** `mods/decompiled/` — never `ClientFile/`
 - **Logs:** `_inspect_udp_listener/fusionfall_log.txt`
 - **Customer requirements:** `client_requirement.txt`
+- **Mission catalog:** `docs/missions/MISSION-CATALOG.md` → `docs/missions/catalog/MISSION-{id}.md` (747 missions; export: `python tools/export-mission-catalog.py`)
+- **Generic mission logic:** `docs/MISSION-EXECUTION-LOGIC.md`
+- **Primary test mission:** 504 — [`catalog/MISSION-504.md`](docs/missions/catalog/MISSION-504.md) + log analysis [`MISSION-504.md`](docs/missions/MISSION-504.md)
 - **Do not** close Fusion Lair / timer items on vanilla bundle without client `ClientMod` DLL
 
 Update this section when the canonical bundle changes.

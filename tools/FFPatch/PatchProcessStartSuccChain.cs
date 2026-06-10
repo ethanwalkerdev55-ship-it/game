@@ -5,19 +5,11 @@ using Mono.Cecil.Cil;
 
 namespace FFPatch;
 
-/// <summary>
-/// Surgical ProcessStartSucc: advance force-complete chain after task start (e.g. 463 instance task).
-/// </summary>
 internal static class PatchProcessStartSuccChain
 {
-    internal static void Apply(TypeDefinition type)
+    internal static void Apply(TypeDefinition type, TypeDefinition donorType)
     {
-        var handler = type.Methods.FirstOrDefault(m => m.Name == "ForceCompleteOnStartSucc");
-        if (handler == null)
-        {
-            throw new InvalidOperationException("ForceCompleteOnStartSucc missing — build donor first.");
-        }
-
+        var donorEmit = donorType.Methods.First(m => m.Name == "EmitDocCompletePacket");
         var method = type.Methods.First(m => m.Name == "ProcessStartSucc");
         var body = method.Body;
         if (HasChainHook(body))
@@ -52,16 +44,23 @@ internal static class PatchProcessStartSuccChain
 
         if (taskNumVar == null)
         {
-            throw new InvalidOperationException("ProcessStartSucc: iTaskNum local not found.");
+            throw new System.InvalidOperationException("ProcessStartSucc: iTaskNum local not found.");
         }
 
-        var anchor = body.Instructions.FirstOrDefault(i =>
+        var taskVar = new VariableDefinition(type.Module.ImportReference(
+            type.Module.Types.First(t => t.Name == "cnMissionNode")));
+        body.Variables.Add(taskVar);
+        var getTask = type.Methods.First(m => m.Name == "GetTask" && m.Parameters.Count == 1);
+        var loopTemp = type.Fields.First(f => f.Name == "m_iloopTemp");
+        var fctBody = type.Methods.First(m => m.Name == "ForceCompleteCurrentTask").Body!;
+        var requireInstanceField = IlLookup.FindField(fctBody, type.Module, "m_iRequireInstanceID");
+        var taskIdField = IlLookup.FindField(fctBody, type.Module, "m_iHTaskID");
+        var getMe = IlLookup.FindGetMe(type.Module);
+        var logMethod = IlLookup.FindLog(body);
+        var toString = type.Module.ImportReference(typeof(int).GetMethod("ToString", System.Type.EmptyTypes)!);
+
+        var anchor = body.Instructions.First(i =>
             i.OpCode == OpCodes.Ldstr && i.Operand as string == "ProcessStartSucc ");
-        if (anchor == null)
-        {
-            throw new InvalidOperationException("ProcessStartSucc: anchor log not found.");
-        }
-
         anchor = anchor.Next ?? anchor;
         while (anchor != null && anchor.OpCode == OpCodes.Call)
         {
@@ -69,17 +68,50 @@ internal static class PatchProcessStartSuccChain
         }
 
         var il = body.GetILProcessor();
-        il.InsertBefore(anchor, il.Create(OpCodes.Ldarg_0));
-        il.InsertBefore(anchor, il.Create(OpCodes.Ldloc, taskNumVar));
-        il.InsertBefore(anchor, il.Create(OpCodes.Call, handler));
+        var cont = anchor!;
+        var emitSite = il.Create(OpCodes.Nop);
+
+        var gate = new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldfld, loopTemp),
+            il.Create(OpCodes.Ldc_I4_0),
+            il.Create(OpCodes.Ble_S, cont),
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldloc, taskNumVar),
+            il.Create(OpCodes.Call, getTask),
+            il.Create(OpCodes.Stloc, taskVar),
+            il.Create(OpCodes.Ldloc, taskVar),
+            il.Create(OpCodes.Brfalse_S, cont),
+            il.Create(OpCodes.Ldloc, taskVar),
+            il.Create(OpCodes.Callvirt, getMe),
+            il.Create(OpCodes.Ldfld, requireInstanceField),
+            il.Create(OpCodes.Ldc_I4_0),
+            il.Create(OpCodes.Ble_S, cont),
+            il.Create(OpCodes.Ldstr, "ForceCompleteV2: instance zone complete task "),
+            il.Create(OpCodes.Ldloc, taskVar),
+            il.Create(OpCodes.Callvirt, getMe),
+            il.Create(OpCodes.Ldfld, taskIdField),
+            il.Create(OpCodes.Call, toString),
+            il.Create(OpCodes.Call, logMethod),
+            il.Create(OpCodes.Br_S, emitSite)
+        };
+
+        foreach (var ins in gate.Reverse())
+        {
+            il.InsertBefore(cont, ins);
+        }
+
+        il.InsertBefore(cont, emitSite);
+        ChainIlSplice.SpliceEmit(il, cont, method, type, donorEmit, taskVar);
+        il.InsertBefore(cont, il.Create(OpCodes.Ret));
 
         IlStackHelper.RefreshMaxStack(body);
-        Console.WriteLine($"ProcessStartSucc: chain handler hook injected after anchor (MaxStack={body.MaxStackSize}).");
+        Console.WriteLine($"ProcessStartSucc: inline chain hook injected (MaxStack={body.MaxStackSize}).");
     }
 
     private static bool HasChainHook(MethodBody body) =>
         body.Instructions.Any(i =>
-            i.OpCode == OpCodes.Call &&
-            i.Operand is MethodReference mr &&
-            mr.Name == "ForceCompleteOnStartSucc");
+            i.OpCode == OpCodes.Ldstr &&
+            i.Operand as string == "ForceCompleteV2: instance zone complete task ");
 }

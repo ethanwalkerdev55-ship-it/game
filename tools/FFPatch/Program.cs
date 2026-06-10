@@ -55,6 +55,9 @@ internal static class Program
             "verify-no-donor-refs" => RequireArgs(args, 2, "verify-no-donor-refs requires patched.dll path.")
                 ? (PatchVerify.VerifyNoDonorRefs(args[1]) ? 0 : 1)
                 : 1,
+            "verify-bootstrap" => RequireArgs(args, 2, "verify-bootstrap requires patched.dll path.")
+                ? (PatchVerify.VerifyBootstrapPath(args[1]) ? 0 : 1)
+                : 1,
             "verify-safe-plus" => RequireArgs(args, 2, "verify-safe-plus requires patched.dll path.")
                 ? (PatchVerify.VerifyInstanceCompletePath(args[1]) ? 0 : 1)
                 : 1,
@@ -63,6 +66,18 @@ internal static class Program
                 : 1,
             "patch-safe-client" => RequireArgs(args, 2, "patch-safe-client requires dll path.")
                 ? (PatchSafeClient.Apply(args[1]) ? 0 : 1)
+                : 1,
+            "apply-slash-panel" => RequireArgs(args, 2, "apply-slash-panel requires target.dll path.")
+                ? (PatchSlashPanel.Apply(args[1]) ? 0 : 1)
+                : 1,
+            "roundtrip-test" => RequireArgs(args, 2, "roundtrip-test requires client.dll path.")
+                ? (RoundtripTest.Run(args[1]) ? 0 : 1)
+                : 1,
+            "pe-shell-fit" => RequireArgs(args, 3, "pe-shell-fit requires patched.dll client.dll.")
+                ? (PeShellSlotFit.TryFit(args[1], args[2], (int)new FileInfo(args[2]).Length).HasValue ? 0 : 1)
+                : 1,
+            "method-sizes" => RequireArgs(args, 2, "method-sizes requires dll path and method names.")
+                ? (MethodSizeReport.Run(args[1], args.Skip(2).ToArray()) ? 0 : 1)
                 : 1,
             _ => UnknownCommand(command)
         };
@@ -95,9 +110,11 @@ internal static class Program
         Console.WriteLine("  verify-il <dll> [--lite]");
         Console.WriteLine("  verify-load-safe <patched.dll> <client-base.dll>");
         Console.WriteLine("  verify-no-donor-refs <patched.dll>");
+        Console.WriteLine("  verify-bootstrap <patched.dll>");
         Console.WriteLine("  verify-safe-plus <patched.dll>");
         Console.WriteLine("  verify-direct-send <patched.dll>");
         Console.WriteLine("  patch-safe-client <dll>");
+        Console.WriteLine("  apply-slash-panel <target.dll>");
     }
 
     internal static bool VerifyMarkers(string dllPath) => Verify(dllPath);

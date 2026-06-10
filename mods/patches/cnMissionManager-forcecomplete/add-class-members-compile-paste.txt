@@ -1,39 +1,9 @@
 // dnSpy → Add Class Members (C#) on cnMissionManager
-// Ctrl+A, delete ALL, paste ONLY the block below (lines 7-end). Compile.
-//
-// DO NOT include: using lines, FuncType enum, ManagerFunc delegate
-// Those cause CS0102 duplicate definition errors.
+// Doc504 SAFE+ compact — 3 new methods max (1520640 slot); m_iloopTemp = chain flag
 
 public partial class cnMissionManager
 {
-	private bool bForceCompleteChain;
-	private int m_iForceCompleteChainDepth;
-	private int m_iForceCompletePendingTaskId;
-	private int m_iForceCompleteRetryCount;
-
-	private cnMissionNode GetForceCompleteTarget()
-	{
-		if (this.SelectMissionTask != null && this.SelectMissionTask.GetMe() != null && this.IsExistTaskInActiveMission(this.SelectMissionTask.GetMe().m_iHTaskID))
-		{
-			return this.SelectMissionTask;
-		}
-		cnMissionNode selectedActiveMission = this.GetSelectedActiveMission();
-		if (selectedActiveMission != null && selectedActiveMission.GetMe() != null)
-		{
-			return selectedActiveMission;
-		}
-		for (int i = 0; i < this.m_ActivateMissionList.Count; i++)
-		{
-			cnMissionNode cnMissionNode = (cnMissionNode)this.m_ActivateMissionList[i];
-			if (cnMissionNode != null && cnMissionNode.GetMe() != null)
-			{
-				return cnMissionNode;
-			}
-		}
-		return null;
-	}
-
-	private void PrepareTaskForForceComplete(cnMissionNode task)
+	private void EmitDocCompletePacket(cnMissionNode task)
 	{
 		if (task == null || task.GetMe() == null)
 		{
@@ -50,343 +20,141 @@ public partial class cnMissionManager
 			task.m_fRemainTime = 0f;
 			task.m_fLifeTime = 0f;
 		}
-	}
-
-	private bool NeedsForceCompleteTaskStart(MissionElement me, cnMissionNode task)
-	{
-		if (me == null || task == null)
+		bool err = false;
+		if (me.m_iRequireInstanceID == 12)
 		{
-			return false;
-		}
-		if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
-		{
-			return !this.IsExistTaskInActiveMission(me.m_iHTaskID) || task.GetMissionState() != 1;
-		}
-		if (0 < me.m_iRequireInstanceID)
-		{
-			if (!this.IsExistTaskInActiveMission(me.m_iHTaskID))
+			if (this.ownstatus == null || this.ownstatus.iInsMapNum != 12)
 			{
-				if (this.ownstatus != null && this.ownstatus.iInsMapNum != me.m_iRequireInstanceID)
-				{
-					return false;
-				}
-				return true;
+				err = true;
 			}
 		}
-		return false;
-	}
-
-	private int ResolveForceCompleteTerminatorNpcId(MissionElement me)
-	{
-		if (me == null || me.m_iHTerminatorNPCID == 0)
+		int npc = 0;
+		if (!err && me.m_iHTerminatorNPCID != 0)
 		{
-			return 0;
-		}
-		if (this.pNpcContainer.SearchTableID(me.m_iHTerminatorNPCID))
-		{
-			return me.m_iHTerminatorNPCID;
-		}
-		if (this.myuser != null)
-		{
-			this.m_NearList.Clear();
-			this.GetNearList(this.myuser);
-			if (this.GetNearbyNPC(me.m_iHTerminatorNPCID) != null)
+			npc = me.m_iHTerminatorNPCID;
+			if (!this.pNpcContainer.SearchTableID(npc))
 			{
-				return me.m_iHTerminatorNPCID;
+				npc = 0;
 			}
 		}
-		return 0;
+		this.RequestTaskComplete(me.m_iHTaskID, npc, err);
 	}
 
-	private void ClearForceCompleteChain()
+	// FCT hotkey splice — quotas already cleared; npc/err only (saves 1520640 slot)
+	private void EmitDocCompletePacketHotkey(cnMissionNode task)
 	{
-		this.bForceCompleteChain = false;
-		this.m_iForceCompleteChainDepth = 0;
-		this.m_iForceCompletePendingTaskId = 0;
-		this.m_iForceCompleteRetryCount = 0;
-	}
-
-	private bool IsForceCompleteOutsideInstanceBlocker(MissionElement me)
-	{
-		if (me != null && me.m_iRequireInstanceID > 0)
+		if (task == null || task.GetMe() == null)
 		{
-			if (this.ownstatus != null)
-			{
-				return this.ownstatus.iInsMapNum != me.m_iRequireInstanceID;
-			}
-			return true;
-		}
-		return false;
-	}
-
-	private void RequestForceCompleteTaskEnd(cnMissionNode task)
-	{
-		MissionElement me = null;
-		int taskId = 0;
-		if (task != null && task.GetMe() != null)
-		{
-			me = task.GetMe();
-			taskId = me.m_iHTaskID;
-		}
-		else if (0 < this.m_iForceCompletePendingTaskId)
-		{
-			taskId = this.m_iForceCompletePendingTaskId;
-			cnMissionNode pending = this.GetTask(taskId);
-			if (pending != null)
-			{
-				me = pending.GetMe();
-			}
-		}
-		if (taskId <= 0)
-		{
-			Logger.Log("ForceCompleteV2: abort end packet no task id");
 			return;
 		}
-		int num = this.m_iForceCompleteRetryCount / 3;
-		if (num <= 0)
+		MissionElement me = task.GetMe();
+		bool err = false;
+		if (me.m_iRequireInstanceID == 12)
 		{
-			Logger.Log("ForceCompleteV2: complete without npc gate task " + taskId.ToString());
-		}
-		else if (num == 1)
-		{
-			Logger.Log("ForceCompleteV2: retry without npc task " + taskId.ToString());
-		}
-		else
-		{
-			Logger.Log("ForceCompleteV2: retry with error flag task " + taskId.ToString());
-		}
-		bool sendError = (me != null && 0 < me.m_iRequireInstanceID) || 1 < num;
-		if (me != null && 0 < me.m_iRequireInstanceID)
-		{
-			Logger.Log("ForceCompleteV2: instance zone complete task " + taskId.ToString());
-		}
-		this.ForceCompleteEmitTaskEndPacket(taskId, 0, sendError);
-	}
-
-	private void ForceCompleteEmitTaskEndPacket(int taskId, int npcId, bool sendError)
-	{
-		Logger.Log("ForceCompleteV2: emit enter task " + taskId.ToString() + " npc " + npcId.ToString() + " err " + sendError.ToString());
-		sP_CL2FE_REQ_PC_TASK_END pkt = default(sP_CL2FE_REQ_PC_TASK_END);
-		pkt.iTaskNum = taskId;
-		if (sendError)
-		{
-			pkt.iEscortNPC_ID = -1;
-		}
-		if (npcId != 0)
-		{
-			Transform transform = this.pNpcContainer.SearchTableID(npcId);
-			if (transform)
+			if (this.ownstatus == null || this.ownstatus.iInsMapNum != 12)
 			{
-				Status status = transform.GetComponent(typeof(Status)) as Status;
-				if (null != status)
-				{
-					pkt.iNPC_ID = status.iID;
-				}
+				err = true;
 			}
 		}
-		Logger.Log("ForceCompleteV2: sent complete packet task " + taskId.ToString() + " npc " + npcId.ToString() + " err " + sendError.ToString());
-		cnEvent.SendPacket(Marshal.SizeOf(typeof(sP_CL2FE_REQ_PC_TASK_END)), 318767116, pkt);
-		this.AddMissionTaskChecker(taskId);
+		int npc = (!err) ? me.m_iHTerminatorNPCID : 0;
+		this.RequestTaskComplete(me.m_iHTaskID, npc, err);
+	}
+
+	// EndSucc inline splice only — minimal RTC to save 1520640 slot
+	private void EmitDocCompletePacketSlim(cnMissionNode task)
+	{
+		if (task == null || task.GetMe() == null)
+		{
+			return;
+		}
+		MissionElement me = task.GetMe();
+		this.RequestTaskComplete(me.m_iHTaskID, 0, false);
 	}
 
 	private void TryForceCompleteChainTask(cnMissionNode task)
 	{
 		if (task == null || task.GetMe() == null)
 		{
-			Logger.Log("ForceCompleteV2: abort chain null task");
-			this.ClearForceCompleteChain();
+			this.m_iloopTemp = 0;
 			return;
 		}
-		if (this.m_iForceCompleteChainDepth >= 16)
+		if (this.m_iloopTemp >= 16)
 		{
-			Logger.Log("ForceCompleteV2: abort chain depth limit");
-			this.ClearForceCompleteChain();
+			this.m_iloopTemp = 0;
 			return;
 		}
 		MissionElement me = task.GetMe();
-		int taskId = me.m_iHTaskID;
-		this.PrepareTaskForForceComplete(task);
-		bool needsStart = this.NeedsForceCompleteTaskStart(me, task);
-		if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
-		{
-			needsStart = false;
-		}
-		if (needsStart)
-		{
-			Logger.Log("ForceCompleteV2: defer start task " + taskId.ToString());
-			this.m_iForceCompletePendingTaskId = taskId;
-			this.m_iForceCompleteRetryCount = 0;
-			this.RequestTaskStart(taskId, 0);
-			return;
-		}
-		if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
-		{
-			task.SetRemainTime(0f);
-			task.m_fLifeTime = 0f;
-		}
-		this.m_iForceCompleteChainDepth++;
-		this.m_iForceCompleteRetryCount = 0;
-		bool sendError = 0 < me.m_iRequireInstanceID;
-		Logger.Log("ForceCompleteV2: chain emit task " + taskId.ToString() + " err " + sendError.ToString());
-		this.ForceCompleteEmitTaskEndPacket(taskId, 0, sendError);
+		Logger.Log("ForceCompleteV2: chain doc-complete task " + me.m_iHTaskID.ToString());
+		this.m_iloopTemp++;
+		this.EmitDocCompletePacket(task);
 	}
 
-	private bool ForceCompleteOnEndFail(cnMissionNode task, int forceErrorCode)
+	// phase: 0=EndFail 1=EndSucc 2=StartFail 3=StartSucc
+	private bool ForceCompleteChainHook(int phase, cnMissionNode task, int arg)
 	{
-		if (!this.bForceCompleteChain || task == null || task.GetMe() == null)
+		if (this.m_iloopTemp <= 0)
 		{
 			return false;
 		}
-		MissionElement me = task.GetMe();
-		if (forceErrorCode == 13)
+		if (phase == 2 || phase == 3)
 		{
-			Logger.Log("ForceCompleteV2: abort fatal error 13 on task " + me.m_iHTaskID.ToString());
-			this.ClearForceCompleteChain();
-			return true;
-		}
-		if (forceErrorCode == 1 || forceErrorCode == 11 || forceErrorCode == 12)
-		{
-			this.m_iForceCompleteRetryCount++;
-			if (this.m_iForceCompleteRetryCount > 9)
+			task = this.GetTask(arg);
+			if (task == null || task.GetMe() == null)
 			{
-				Logger.Log("ForceCompleteV2: max retries exceeded on task " + me.m_iHTaskID.ToString());
-				this.ClearForceCompleteChain();
-				return true;
+				return phase == 2;
 			}
-			Logger.Log("ForceCompleteV2: retry task " + me.m_iHTaskID.ToString() + " err " + forceErrorCode.ToString() + " attempt " + this.m_iForceCompleteRetryCount.ToString());
-			this.m_iForceCompletePendingTaskId = me.m_iHTaskID;
-			this.PrepareTaskForForceComplete(task);
-			if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
+			if (phase == 2)
 			{
-				task.SetRemainTime(0f);
-				task.m_fLifeTime = 0f;
-				if (this.IsExistTaskInActiveMission(me.m_iHTaskID) && task.GetMissionState() == 1)
-				{
-					this.m_iForceCompletePendingTaskId = 0;
-					this.RequestForceCompleteTaskEnd(task);
-					return true;
-				}
-				this.m_iForceCompletePendingTaskId = me.m_iHTaskID;
-				return true;
+				Logger.Log("ForceCompleteV2: instance start fail complete task " + arg.ToString());
+				this.EmitDocCompletePacket(task);
+				return false;
 			}
-			if (!this.IsExistTaskInActiveMission(me.m_iHTaskID) || task.GetMissionState() != 1)
+			MissionElement me = task.GetMe();
+			if (0 < me.m_iRequireInstanceID)
 			{
-				this.RequestTaskStart(me.m_iHTaskID, 0);
+				Logger.Log("ForceCompleteV2: instance zone complete task " + me.m_iHTaskID.ToString());
+				this.EmitDocCompletePacket(task);
 			}
-			else
-			{
-				this.RequestForceCompleteTaskEnd(task);
-			}
-			return true;
-		}
-		Logger.Log("ForceCompleteV2: abort task " + me.m_iHTaskID.ToString() + " err " + forceErrorCode.ToString());
-		this.ClearForceCompleteChain();
-		return true;
-	}
-
-	private bool ForceCompleteOnEndSucc(cnMissionNode task)
-	{
-		if (!this.bForceCompleteChain || task == null || task.GetMe() == null)
-		{
 			return false;
 		}
-		cnMissionNode nextChainTask = null;
+		if (task == null || task.GetMe() == null)
+		{
+			this.m_iloopTemp = 0;
+			return true;
+		}
+		if (phase == 0)
+		{
+			if (arg == 13)
+			{
+				this.m_iloopTemp = 0;
+				return true;
+			}
+			if (arg == 1 || arg == 11 || arg == 12)
+			{
+				Logger.Log("ForceCompleteV2: retry task " + task.GetMe().m_iHTaskID.ToString() + " err " + arg.ToString());
+				this.EmitDocCompletePacket(task);
+				return true;
+			}
+			this.m_iloopTemp = 0;
+			return false;
+		}
+		cnMissionNode next = null;
 		if (0 < task.GetMe().m_iSUOutgoingTask)
 		{
-			nextChainTask = this.GetTask(task.GetMe().m_iSUOutgoingTask);
+			next = this.GetTask(task.GetMe().m_iSUOutgoingTask);
 		}
-		if (nextChainTask == null)
+		if (next == null)
 		{
-			nextChainTask = this.GetNextTaskNode(task);
+			next = this.GetNextTaskNode(task);
 		}
-		if (nextChainTask != null && nextChainTask.GetMe() != null)
+		if (next != null && next.GetMe() != null)
 		{
-			Logger.Log("ForceCompleteV2: advance to task " + nextChainTask.GetMe().m_iHTaskID.ToString());
-			this.TryForceCompleteChainTask(nextChainTask);
+			Logger.Log("ForceCompleteV2: advance to task " + next.GetMe().m_iHTaskID.ToString());
+			this.TryForceCompleteChainTask(next);
 			return true;
 		}
 		Logger.Log("ForceCompleteV2: chain finished");
-		this.ClearForceCompleteChain();
+		this.m_iloopTemp = 0;
 		return true;
-	}
-
-	private void ForceCompleteOnStartFail(int iTaskNum)
-	{
-		if (!this.bForceCompleteChain)
-		{
-			return;
-		}
-		cnMissionNode task = this.GetTask(iTaskNum);
-		if (task == null || task.GetMe() == null)
-		{
-			return;
-		}
-		MissionElement me = task.GetMe();
-		if (0 < me.m_iRequireInstanceID && !this.IsExistTaskInActiveMission(me.m_iHTaskID))
-		{
-			Logger.Log("ForceCompleteV2: instance start fail complete task " + iTaskNum.ToString());
-			this.PrepareTaskForForceComplete(task);
-			this.m_iForceCompletePendingTaskId = 0;
-			this.ForceCompleteEmitTaskEndPacket(iTaskNum, 0, true);
-			return;
-		}
-		if (this.m_iForceCompletePendingTaskId != 0 && this.m_iForceCompletePendingTaskId != iTaskNum)
-		{
-			this.m_iForceCompletePendingTaskId = 0;
-		}
-		if (this.m_iForceCompletePendingTaskId == 0 || this.m_iForceCompletePendingTaskId != iTaskNum)
-		{
-			return;
-		}
-		if (this.IsExistTaskInActiveMission(me.m_iHTaskID) && task.GetMissionState() == 1)
-		{
-			this.PrepareTaskForForceComplete(task);
-			if (0 < me.m_iSTGrantTimer || 0 < me.m_iCSUCheckTimer)
-			{
-				task.SetRemainTime(0f);
-				task.m_fLifeTime = 0f;
-				this.m_iForceCompletePendingTaskId = me.m_iHTaskID;
-				return;
-			}
-			this.m_iForceCompletePendingTaskId = 0;
-			Logger.Log("ForceCompleteV2: complete after start fail " + iTaskNum.ToString());
-			bool sendError = 0 < me.m_iRequireInstanceID;
-			this.ForceCompleteEmitTaskEndPacket(iTaskNum, 0, sendError);
-		}
-		else
-		{
-			this.ClearForceCompleteChain();
-		}
-	}
-
-	private void ForceCompleteOnStartSucc(int iTaskNum)
-	{
-		if (!this.bForceCompleteChain)
-		{
-			return;
-		}
-		if (this.m_iForceCompletePendingTaskId != 0 && this.m_iForceCompletePendingTaskId != iTaskNum)
-		{
-			this.m_iForceCompletePendingTaskId = 0;
-		}
-		cnMissionNode task = this.GetTask(iTaskNum);
-		if (task == null || task.GetMe() == null)
-		{
-			return;
-		}
-		this.PrepareTaskForForceComplete(task);
-		MissionElement forceMe = task.GetMe();
-		if (0 < forceMe.m_iSTGrantTimer || 0 < forceMe.m_iCSUCheckTimer)
-		{
-			task.SetRemainTime(0f);
-			task.m_fLifeTime = 0f;
-			this.m_iForceCompletePendingTaskId = iTaskNum;
-			Logger.Log("ForceCompleteV2: wait timer after start " + iTaskNum.ToString());
-			return;
-		}
-		this.m_iForceCompletePendingTaskId = 0;
-		bool sendError = 0 < forceMe.m_iRequireInstanceID;
-		Logger.Log("ForceCompleteV2: complete after start " + iTaskNum.ToString() + " err " + sendError.ToString());
-		this.ForceCompleteEmitTaskEndPacket(iTaskNum, 0, sendError);
 	}
 }

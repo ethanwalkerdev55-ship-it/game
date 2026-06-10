@@ -1,32 +1,28 @@
-@echo off
-setlocal
-
-echo.
-echo === Mission patch launcher prep ===
-echo.
-echo OpenFusionLauncher rewrites the version manifest when you switch pages
-echo (login -^> servers -^> game builds). That reverts main.unity3d to CDN vanilla
-echo and interrupts Connect / reloads the client at CreateGameMode:1.
-echo.
-echo This script pins the manifest to your LOCAL patched bundle.
-echo.
-
-call "%~dp0fix-launcher-manifest.bat"
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-call "%~dp0verify-deploy-manifest.bat"
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo Manifest still points at CDN. Run: apply-mission-patch-client-deploy.bat
-    exit /b 1
-)
-
-echo.
-echo Manifest OK and pinned. In the launcher:
-echo   1. Stay on the server list page (Tester1 selected)
-echo   2. Click Connect immediately — do not open Game Builds / other pages first
-echo   3. If you already navigated away, run this script again, then Connect
-echo.
-echo Rollback / unpin manifest: restore-client.bat
-exit /b 0
-
+@echo off
+setlocal
+
+echo.
+echo === Mission patch launcher prep ===
+echo.
+echo Syncs patched bundle + bootstrap to offline cache AND ffcache, then pins manifest.
+echo NOTE: game log 'Requesting to assetInfo.php' is request START only — failures are silent.
+echo       udp_listener now emits BOOTSTRAP_STALL diagnostics; run bootstrap-snapshot before Connect.
+echo.
+
+call "%~dp0sync-patch-cache.bat" --pin
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo Sync failed. Run: apply-mission-patch-client-deploy.bat
+    exit /b 1
+)
+
+call "%~dp0bootstrap-snapshot.bat"
+
+echo.
+echo Ready. In the launcher:
+echo   1. Fully quit and reopen launcher if it was already open
+echo   2. Tester1 selected -^> Connect
+echo.
+echo Rollback: restore-client.bat
+exit /b 0
+
